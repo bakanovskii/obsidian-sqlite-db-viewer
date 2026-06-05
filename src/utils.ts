@@ -1,20 +1,25 @@
 import { App, TFile, setIcon } from "obsidian";
 import initSqlJs, { Database, SqlJsStatic } from "sql.js";
 
+// esbuild will fill this to insert WASM SQL module
+declare const INJECTED_WASM_BASE64: string;
+
 /* Global Cache for WASM sql.js */
 let sqlPromise: Promise<SqlJsStatic> | null = null;
 
-async function getSql(app: App, pluginId: string): Promise<SqlJsStatic> {
+function base64ToUint8Array(base64: string): Uint8Array {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+}
+
+async function getSql(): Promise<SqlJsStatic> {
     if (!sqlPromise) {
-        const configDir = app.vault.configDir;
-        const pluginDir = `${configDir}/plugins/${pluginId}`;
-        const wasmPath = `${pluginDir}/sql-wasm.wasm`;
-        const exists = await app.vault.adapter.exists(wasmPath);
-        if (!exists) {
-            throw new Error(`SQLite WASM file not found at ${wasmPath}. Please reinstall the plugin.`);
-        }
-        const wasmBuffer = await app.vault.adapter.readBinary(wasmPath);
-        sqlPromise = initSqlJs({ wasmBinary: wasmBuffer });
+        const wasmArray = base64ToUint8Array(INJECTED_WASM_BASE64);
+        sqlPromise = initSqlJs({ wasmBinary: wasmArray.buffer as ArrayBuffer });
     }
     return sqlPromise;
 }
@@ -24,7 +29,7 @@ async function getSql(app: App, pluginId: string): Promise<SqlJsStatic> {
  * Uses cached WASM to avoid repeated reading.
  */
 export async function loadDb(app: App, pluginId: string, file: TFile): Promise<Database> {
-    const SQL = await getSql(app, pluginId);
+    const SQL = await getSql();
     const arrayBuffer = await app.vault.readBinary(file);
     return new SQL.Database(new Uint8Array(arrayBuffer));
 }

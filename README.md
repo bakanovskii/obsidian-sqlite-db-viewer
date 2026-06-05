@@ -43,7 +43,7 @@ From the Obsidian Community Plugins
 * Install and Enable the plugin.
 
 Manual Installation
-* Download the latest release (`main.js`, `manifest.json`, `styles.css`, and `sql-wasm.wasm`) from the Releases page.
+* Download the latest release (`main.js`, `manifest.json`, `styles.css`) from the Releases page.
 * Place all files inside your vault at .obsidian/plugins/obsidian-sqlite/.
 * Reload Obsidian and enable the plugin in Settings.
 
