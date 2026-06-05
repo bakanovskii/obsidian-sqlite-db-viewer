@@ -1,10 +1,10 @@
 {
     "name": "obsidian-sqlite",
-    "version": "0.1.1",
+    "version": "0.2.0",
     "main": "index.js",
     "scripts": {
         "dev": "node esbuild.config.mjs",
-        "build": "node esbuild.config.mjs production && cp node_modules/sql.js/dist/sql-wasm.wasm ./",
+        "build": "node esbuild.config.mjs production",
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "format": "prettier --write \"**/*.ts\"",

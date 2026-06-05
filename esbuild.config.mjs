@@ -1,5 +1,6 @@
 import esbuild from "esbuild";
 import process from "process";
+import fs from "node:fs";
 import { builtinModules } from "node:module";
 
 const banner =
@@ -10,6 +11,10 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+
+// Read wasm SQL adn save to inject later
+const wasmBuffer = fs.readFileSync("node_modules/sql.js/dist/sql-wasm.wasm");
+const wasmBase64 = wasmBuffer.toString("base64");
 
 const context = await esbuild.context({
     banner: {
@@ -35,6 +40,10 @@ const context = await esbuild.context({
     logLevel: "info",
     sourcemap: prod ? false : "inline",
     treeShaking: true,
+    define: {
+        // Inject SQL WASM directly to plugin
+        "INJECTED_WASM_BASE64": JSON.stringify(wasmBase64)
+    },
     outfile: "main.js"
 }).catch(() => process.exit(1));
 
