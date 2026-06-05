@@ -1,4 +1,5 @@
 import { MarkdownRenderChild, TFile, MarkdownRenderer, Notice } from "obsidian";
+import type { Database, SqlValue } from "sql.js";
 import { PAGINATION_NUMS } from "./config";
 import { applyIcon, loadDb, createActionBtn } from "./utils";
 import ObsidianSqlitePlugin from "./main";
@@ -14,15 +15,21 @@ import {
     buildPaginatedQuery,
 } from "./formatters";
 
+export interface ColumnSchema {
+    name: string;
+    type: string;
+    isPk: boolean;
+}
+
 export class SqliteResultRenderer extends MarkdownRenderChild {
     isEditMode: boolean = false;
     tableName: string | null = null;
-    pkColumn: any = null;
-    columnsInfo: any[] = [];
+    pkColumn: ColumnSchema | null = null;
+    columnsInfo: SqlValue[][] = [];
 
     // Local DB connection for Codeblocks
-    localDb: any = null;
-    get activeDb() {
+    localDb: Database | null = null;
+    get activeDb(): Database | null {
         return this.sharedDb || this.localDb;
     }
 
@@ -39,13 +46,17 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         private query: string,
         private file: TFile,
         private forceRaw: boolean = false,
-        private sharedDb: any = null,
+        private sharedDb: Database | null = null,
         private onDbModified: () => Promise<void> = async () => {}
     ) {
         super(containerEl);
     }
 
-    async onload() {
+    onload() {
+        void this.initializeDbAndRender();
+    }
+
+    async initializeDbAndRender() {
         if (!this.sharedDb) {
             this.localDb = await loadDb(this.plugin.app, this.plugin.manifest.id, this.file);
         }
@@ -67,7 +78,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         if (this.lastDbResult) {
             this.renderTable();
         } else {
-            this.loadDataAndRender();
+            void this.loadDataAndRender();
         }
     }
 
@@ -87,16 +98,19 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         new Notice("Table refreshed!");
     }
 
-    private async executeWrite(query: string, params: any[]) {
-        const stmt = this.activeDb.prepare(query);
+    private async executeWrite(query: string, params: SqlValue[]) {
+        const db = this.activeDb;
+        if (!db) return;
+
+        const stmt = db.prepare(query);
         stmt.run(params);
         stmt.free();
 
         if (this.sharedDb) {
             await this.onDbModified();
         } else {
-            const buffer = this.activeDb.export().buffer;
-            await this.plugin.app.vault.modifyBinary(this.file, buffer as any);
+            const buffer = db.export().buffer;
+            await this.plugin.app.vault.modifyBinary(this.file, buffer as ArrayBuffer);
         }
     }
 
@@ -113,12 +127,13 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         if (!this.lastDbResult) {
             this.toolbarEl.empty();
             this.tableEl.empty();
-            this.tableEl.style.display = "block";
+            this.tableEl.setCssStyles({ display: "block" });
             this.tableEl.textContent = "⏳ Executing query...";
         }
 
         try {
             const db = this.activeDb;
+            if (!db) return;
 
             if (this.tableName === null && !this.forceRaw) {
                 this.tableName = extractTableNameFromQuery(this.query);
@@ -128,9 +143,10 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                 try {
                     const schema = db.exec(`PRAGMA table_info("${this.tableName}");`);
                     if (schema.length > 0) {
-                        const { columns, pkColumnName } = parseTableSchema(schema[0].values);
+                        const parsed = parseTableSchema(schema[0].values);
                         this.columnsInfo = schema[0].values;
-                        this.pkColumn = columns.find((c) => c.name === pkColumnName);
+                        const foundPk = parsed.columns.find((c) => c.name === parsed.pkColumnName);
+                        this.pkColumn = foundPk ? { name: foundPk.name, type: foundPk.type, isPk: foundPk.isPk } : null;
                     } else {
                         this.tableName = null;
                     }
@@ -156,7 +172,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                 try {
                     const countRes = db.exec(countQuery);
                     if (countRes.length > 0 && countRes[0].values.length > 0) {
-                        totalRows = countRes[0].values[0][0] as number;
+                        totalRows = Number(countRes[0].values[0][0]);
                     }
                 } catch {
                     // Ignore invalid queries
@@ -181,8 +197,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                         text: "⚠️ Read-only: No Primary Key",
                         cls: "text-warning",
                     });
-                    warn.style.fontSize = "12px";
-                    warn.style.marginBottom = "10px";
+                    warn.setCssStyles({ fontSize: "12px", marginBottom: "10px" });
                 }
 
                 this.lastDbResult = { columns, totalRows };
@@ -193,7 +208,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             }
         } catch (e) {
             this.tableEl.empty();
-            this.tableEl.createEl("span", { text: `[SQL Error: ${e}]`, cls: "sqlite-error" });
+            this.tableEl.createEl("span", { text: `[SQL Error: ${String(e)}]`, cls: "sqlite-error" });
         }
     }
 
@@ -222,12 +237,13 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             this.plugin.settings.tableStyle,
             // THE SERVER-SIDE FETCH HOOK: Only pulls exactly what is needed for this page!
             async (limit, offset, sortCol, sortDir) => {
+                if (!this.activeDb) return [];
                 const paginatedQuery = buildPaginatedQuery(this.query, sortCol, sortDir, limit, offset);
                 try {
                     const res = this.activeDb.exec(paginatedQuery);
                     return res.length > 0 ? res[0].values : [];
                 } catch (e) {
-                    new Notice(`Query error: ${e}`);
+                    new Notice(`Query error: ${String(e)}`);
                     return [];
                 }
             },
@@ -242,12 +258,11 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                 );
 
                 if (mode === "markdown") {
-                    MarkdownRenderer.render(this.plugin.app, displayValue, td, this.file.path, cellComponent).then(
+                    void MarkdownRenderer.render(this.plugin.app, displayValue, td, this.file.path, cellComponent).then(
                         () => {
                             const p = td.querySelector("p");
                             if (p) {
-                                p.style.margin = "0";
-                                p.style.padding = "0";
+                                p.setCssStyles({ margin: "0", padding: "0" });
                             }
                         }
                     );
@@ -255,20 +270,20 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                     td.textContent = displayValue;
 
                     if (mode === "editable" && row && this.lastDbResult) {
-                        const pkIndex = this.lastDbResult.columns.indexOf(this.pkColumn.name);
+                        const pkIndex = this.lastDbResult.columns.indexOf(this.pkColumn!.name);
                         const rowPkValue = pkIndex !== -1 ? row[pkIndex] : null;
 
                         td.contentEditable = "true";
                         td.classList.add("sqlite-editable-cell");
 
-                        td.onfocus = () => (td.style.backgroundColor = "var(--background-modifier-hover)");
-                        td.onblur = async () => {
-                            td.style.backgroundColor = "transparent";
+                        td.onfocus = () => td.setCssStyles({ backgroundColor: "var(--background-modifier-hover)" });
+                        td.onblur = () => {
+                            td.setCssStyles({ backgroundColor: "transparent" });
                             const newVal = td.textContent;
                             if (newVal !== displayValue) {
                                 const finalVal = newVal === "NULL" ? null : newVal;
                                 const colIndex = this.lastDbResult!.columns.indexOf(colName!);
-                                await this.updateCell(colName!, finalVal, rowPkValue, row, colIndex);
+                                void this.updateCell(colName!, finalVal, rowPkValue, row, colIndex);
                             }
                         };
                         td.onkeydown = (e) => {
@@ -278,9 +293,11 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                             }
                         };
                     } else if (mode === "readonly" && this.isEditMode) {
-                        td.style.backgroundColor = "var(--background-secondary)";
-                        td.style.color = "var(--text-muted)";
-                        td.style.cursor = "not-allowed";
+                        td.setCssStyles({
+                            backgroundColor: "var(--background-secondary)",
+                            color: "var(--text-muted)",
+                            cursor: "not-allowed",
+                        });
                     }
                 }
             },
@@ -295,22 +312,22 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                 // Grab the last cell in the row and safely inject the button inside it
                 const lastTd = tr.lastElementChild as HTMLElement;
                 if (!lastTd) return;
-                lastTd.style.position = "relative";
+                lastTd.setCssStyles({ position: "relative" });
 
                 const delBtn = lastTd.createEl("div", { cls: "sqlite-row-action" });
                 applyIcon(delBtn, "trash");
 
                 delBtn.onclick = (e) => {
                     e.stopPropagation();
-                    const pkIndex = this.lastDbResult!.columns.indexOf(this.pkColumn.name);
+                    const pkIndex = this.lastDbResult!.columns.indexOf(this.pkColumn!.name);
                     const pkValue = row[pkIndex];
 
                     new ConfirmModal(
                         this.plugin.app,
                         "Delete Row",
-                        `Are you sure you want to delete this row? (${this.pkColumn.name} = ${pkValue})`,
-                        async () => {
-                            await this.deleteRow(pkValue);
+                        `Are you sure you want to delete this row? (${this.pkColumn!.name} = ${String(pkValue)})`,
+                        () => {
+                            void this.deleteRow(pkValue);
                         }
                     ).open();
                 };
@@ -318,28 +335,28 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         );
     }
 
-    async updateCell(colName: string, newVal: string | null, pkValue: any, row: any[], colIndex: number) {
+    async updateCell(colName: string, newVal: string | null, pkValue: SqlValue, row: SqlValue[], colIndex: number) {
         try {
             await this.executeWrite(
-                `UPDATE "${this.tableName}" SET "${colName}" = ? WHERE "${this.pkColumn.name}" = ?`,
+                `UPDATE "${this.tableName}" SET "${colName}" = ? WHERE "${this.pkColumn!.name}" = ?`,
                 [newVal, pkValue]
             );
 
             row[colIndex] = newVal;
             new Notice("Row updated!");
         } catch (e) {
-            new Notice(`Update error: ${e}`);
+            new Notice(`Update error: ${String(e)}`);
             await this.loadDataAndRender();
         }
     }
 
-    async deleteRow(pkValue: any) {
+    async deleteRow(pkValue: SqlValue) {
         try {
-            await this.executeWrite(`DELETE FROM "${this.tableName}" WHERE "${this.pkColumn.name}" = ?`, [pkValue]);
+            await this.executeWrite(`DELETE FROM "${this.tableName}" WHERE "${this.pkColumn!.name}" = ?`, [pkValue]);
             await this.loadDataAndRender();
             new Notice("Row deleted!");
         } catch (e) {
-            new Notice(`Delete error: ${e}`);
+            new Notice(`Delete error: ${String(e)}`);
         }
     }
 
@@ -356,7 +373,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         const inputs: Record<string, HTMLInputElement> = {};
 
         this.columnsInfo.forEach((colMeta) => {
-            const colName = colMeta[1];
+            const colName = String(colMeta[1]);
             const isPk = this.pkColumn && this.pkColumn.name === colName;
             const hasDefault = colMeta[4] !== null;
             const isAuto = isPk || hasDefault;
@@ -379,49 +396,52 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         cancelBtn.textContent = "Cancel";
         cancelBtn.onclick = (e) => {
             e.stopPropagation();
-            formWrapper.style.display = "none";
-            promptWrapper.style.display = "flex";
+            formWrapper.setCssStyles({ display: "none" });
+            promptWrapper.setCssStyles({ display: "flex" });
         };
 
-        const saveNewBtn = createActionBtn(btnGroup, "save", "Save", async (e) => {
+        const saveNewBtn = createActionBtn(btnGroup, "save", "Save", (e) => {
             e.stopPropagation();
 
-            const formData: Record<string, string> = {};
-            Object.keys(inputs).forEach((key) => (formData[key] = inputs[key].value));
+            void (async () => {
+                const formData: Record<string, string> = {};
+                Object.keys(inputs).forEach((key) => (formData[key] = inputs[key].value));
 
-            const { query, values } = buildInlineInsertQuery(
-                this.tableName!,
-                this.columnsInfo,
-                this.pkColumn?.name || null,
-                formData
-            );
-            try {
-                await this.executeWrite(query, values);
-                this.jumpToLastPage = true;
-                await this.loadDataAndRender();
-                new Notice("Row added!");
-            } catch (err) {
-                new Notice(`Insertion error: ${err}`);
-            }
-        });
-        saveNewBtn.classList.add("is-cta");
-
-        promptWrapper.onclick = async (e) => {
-            e.stopPropagation();
-
-            try {
                 const { query, values } = buildInlineInsertQuery(
                     this.tableName!,
                     this.columnsInfo,
-                    this.pkColumn?.name || null
+                    this.pkColumn?.name || null,
+                    formData
                 );
-                await this.executeWrite(query, values);
-                this.jumpToLastPage = true;
-                await this.loadDataAndRender();
-            } catch {
-                promptWrapper.style.display = "none";
-                formWrapper.style.display = "flex";
-            }
+                try {
+                    await this.executeWrite(query, values);
+                    this.jumpToLastPage = true;
+                    await this.loadDataAndRender();
+                    new Notice("Row added!");
+                } catch (e) {
+                    new Notice(`Insertion error: ${String(e)}`);
+                }
+            })();
+        });
+        saveNewBtn.classList.add("is-cta");
+
+        promptWrapper.onclick = (e) => {
+            e.stopPropagation();
+            void (async () => {
+                try {
+                    const { query, values } = buildInlineInsertQuery(
+                        this.tableName!,
+                        this.columnsInfo,
+                        this.pkColumn?.name || null
+                    );
+                    await this.executeWrite(query, values);
+                    this.jumpToLastPage = true;
+                    await this.loadDataAndRender();
+                } catch {
+                    promptWrapper.setCssStyles({ display: "none" });
+                    formWrapper.setCssStyles({ display: "flex" });
+                }
+            })();
         };
     }
 }
@@ -455,21 +475,25 @@ export function buildDbWindowUI(
             e.preventDefault();
             isEdit = !isEdit;
             if (isEdit) {
-                editModeBtn.style.opacity = "1";
-                editModeBtn.style.color = "var(--interactive-accent)";
-                editModeBtn.style.filter = "drop-shadow(0 0 5px var(--interactive-accent))";
+                editModeBtn.setCssStyles({
+                    opacity: "1",
+                    color: "var(--interactive-accent)",
+                    filter: "drop-shadow(0 0 5px var(--interactive-accent))",
+                });
             } else {
-                editModeBtn.style.opacity = "0.5";
-                editModeBtn.style.color = "inherit";
-                editModeBtn.style.filter = "none";
+                editModeBtn.setCssStyles({
+                    opacity: "0.5",
+                    color: "inherit",
+                    filter: "none",
+                });
             }
             onToggleEditMode(isEdit);
         };
         editModeBtn.onmouseenter = () => {
-            if (!isEdit) editModeBtn.style.opacity = "0.8";
+            if (!isEdit) editModeBtn.setCssStyles({ opacity: "0.8" });
         };
         editModeBtn.onmouseleave = () => {
-            if (!isEdit) editModeBtn.style.opacity = "0.5";
+            if (!isEdit) editModeBtn.setCssStyles({ opacity: "0.5" });
         };
     }
 
@@ -495,9 +519,11 @@ export function buildDbWindowUI(
     }
 
     const tableContainer = wrapper.createEl("div");
-    tableContainer.style.padding = "10px";
-    tableContainer.style.overflowX = "auto";
-    tableContainer.style.userSelect = "text";
+    tableContainer.setCssStyles({
+        padding: "10px",
+        overflowX: "auto",
+        userSelect: "text",
+    });
 
     return tableContainer;
 }
@@ -568,10 +594,21 @@ export function renderDataTable(
     parentComponent: MarkdownRenderChild,
     tableState: { page: number; rawLimit?: number; sortCol?: string; sortDir?: "ASC" | "DESC" | null },
     tableStyle: string,
-    fetchData: (limit: number, offset: number, sortCol?: string, sortDir?: "ASC" | "DESC" | null) => Promise<any[][]>,
-    renderCell: (val: any, td: HTMLElement, cellComponent: MarkdownRenderChild, row?: any[], colName?: string) => void,
+    fetchData: (
+        limit: number,
+        offset: number,
+        sortCol?: string,
+        sortDir?: "ASC" | "DESC" | null
+    ) => Promise<SqlValue[][]>,
+    renderCell: (
+        val: SqlValue,
+        td: HTMLElement,
+        cellComponent: MarkdownRenderChild,
+        row?: SqlValue[],
+        colName?: string
+    ) => void,
     renderGhostRow?: (tbody: HTMLElement, colCount: number) => void,
-    renderRowAction?: (tr: HTMLElement, row: any[]) => void
+    renderRowAction?: (tr: HTMLElement, row: SqlValue[]) => void
 ) {
     if (tableState.rawLimit === undefined) {
         tableState.rawLimit = initialLimit;
@@ -584,10 +621,12 @@ export function renderDataTable(
     const tableCls = getTableThemeClass(tableStyle);
 
     const table = wrapper.createEl("table", { cls: tableCls });
-    table.style.width = "100%";
-    table.style.minWidth = "100%";
-    table.style.borderCollapse = "collapse";
-    table.style.borderSpacing = "0";
+    table.setCssStyles({
+        width: "100%",
+        minWidth: "100%",
+        borderCollapse: "collapse",
+        borderSpacing: "0",
+    });
 
     const thead = table.createEl("thead");
     const headerRow = thead.createEl("tr");
@@ -612,7 +651,7 @@ export function renderDataTable(
             }
             updateHeaderClasses();
             tableState.page = 0;
-            renderPage();
+            void renderPage();
         };
     });
 
@@ -648,7 +687,7 @@ export function renderDataTable(
             cls: "text-muted",
         });
         loadingTd.colSpan = columns.length || 1;
-        loadingTd.style.textAlign = "center";
+        loadingTd.setCssStyles({ textAlign: "center" });
 
         const { startIndex, validPage, actualLimit } = calculatePagination(
             tableState.rawLimit!,
@@ -665,9 +704,9 @@ export function renderDataTable(
 
         for (const row of pageValues) {
             const tr = tbody.createEl("tr");
-            tr.style.position = "relative";
+            tr.setCssStyles({ position: "relative" });
 
-            row.forEach((val: any, index: number) => {
+            row.forEach((val: SqlValue, index: number) => {
                 const td = tr.createEl("td");
                 const displayVal = val !== null ? String(val) : "NULL";
                 td.title = displayVal;
@@ -691,17 +730,17 @@ export function renderDataTable(
             totalRows,
             (newPage) => {
                 tableState.page = newPage;
-                renderPage();
+                void renderPage();
             },
             (newLimit) => {
                 tableState.rawLimit = newLimit;
                 tableState.page = 0;
-                renderPage();
+                void renderPage();
             }
         );
 
         activePageChild.load();
     };
 
-    renderPage();
+    void renderPage();
 }

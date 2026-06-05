@@ -1,3 +1,5 @@
+import type { Database, SqlValue } from "sql.js";
+
 /**
  * Strips markdown syntax from a string before inserting it into a database.
  */
@@ -318,12 +320,12 @@ export function extractTableNameFromQuery(query: string): string | null {
  */
 export function buildInlineInsertQuery(
     tableName: string,
-    columnsInfo: any[],
+    columnsInfo: SqlValue[][],
     pkColumnName: string | null,
     formData?: Record<string, string>
-): { query: string; values: any[] } {
+): { query: string; values: SqlValue[] } {
     const cols: string[] = [];
-    const vals: any[] = [];
+    const vals: SqlValue[] = [];
     const placeholders: string[] = [];
 
     // User provided explicit form data
@@ -336,7 +338,7 @@ export function buildInlineInsertQuery(
     } else {
         // Quick Insert: Generate safe defaults based on the database schema
         columnsInfo.forEach((colMeta) => {
-            const colName = colMeta[1];
+            const colName = String(colMeta[1]);
             const type = String(colMeta[2]).toUpperCase();
             const notNull = colMeta[3] === 1;
             const defaultVal = colMeta[4];
@@ -372,7 +374,7 @@ export type CellRenderMode = "markdown" | "editable" | "readonly";
  * Pure logic to determine exactly how a cell should render based on the current state.
  */
 export function determineCellRenderMode(
-    val: any,
+    val: SqlValue,
     colName: string,
     pkColumnName: string | null,
     isEditMode: boolean,
@@ -476,9 +478,9 @@ export function scanForMarkdownTable(
  * Analyzes PRAGMA table_info results to produce a clean,
  * typed schema object that the renderer can easily consume.
  */
-export function parseTableSchema(tableInfoRows: any[][]) {
+export function parseTableSchema(tableInfoRows: SqlValue[][]) {
     const columns = tableInfoRows.map((row) => ({
-        cid: row[0],
+        cid: Number(row[0]),
         name: String(row[1]),
         type: String(row[2]),
         notNull: row[3] === 1,
@@ -498,10 +500,13 @@ export function parseTableSchema(tableInfoRows: any[][]) {
 /**
  * Fetches dashboard stats (table count, view count).
  */
-export function getDatabaseStats(db: any) {
-    const tableCount = db.exec("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")[0]
-        .values[0][0];
-    const viewCount = db.exec("SELECT COUNT(*) FROM sqlite_master WHERE type='view'")[0].values[0][0];
+export function getDatabaseStats(db: Database) {
+    const tableRes = db.exec("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+    const tableCount = tableRes.length > 0 && tableRes[0].values.length > 0 ? Number(tableRes[0].values[0][0]) : 0;
+
+    const viewRes = db.exec("SELECT COUNT(*) FROM sqlite_master WHERE type='view'");
+    const viewCount = viewRes.length > 0 && viewRes[0].values.length > 0 ? Number(viewRes[0].values[0][0]) : 0;
+
     return { tableCount, viewCount };
 }
 
@@ -513,15 +518,14 @@ export interface SidebarObject {
 /**
  * Fetches and sorts database objects (tables and views).
  */
-export function getSidebarObjects(db: any): SidebarObject[] {
+export function getSidebarObjects(db: Database): SidebarObject[] {
     const result = db.exec(
         "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name;"
     );
 
     if (result.length === 0) return [];
 
-    // Explicitly map raw rows to a typed SidebarObject
-    return result[0].values.map((row: any) => ({
+    return result[0].values.map((row: SqlValue[]) => ({
         name: String(row[0]),
         type: row[1] === "view" ? "view" : "table",
     }));

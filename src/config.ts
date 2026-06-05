@@ -55,11 +55,11 @@ export class SqliteSettingTab extends PluginSettingTab {
             .setName("Default row limit (Pagination)")
             .setDesc("Number of rows displayed per page. Set to 0 to show all rows on a single page.")
             .addText((text) =>
-                text.setValue(String(this.plugin.settings.defaultRowLimit)).onChange(async (value) => {
+                text.setValue(String(this.plugin.settings.defaultRowLimit)).onChange((value) => {
                     const parsed = parseInt(value, 10);
                     if (!isNaN(parsed)) {
                         this.plugin.settings.defaultRowLimit = parsed;
-                        await this.plugin.saveSettings();
+                        void this.plugin.saveSettings();
                     }
                 })
             );
@@ -68,9 +68,9 @@ export class SqliteSettingTab extends PluginSettingTab {
             .setName("Render in Live Preview")
             .setDesc("Display databases directly while editing notes")
             .addToggle((toggle) =>
-                toggle.setValue(this.plugin.settings.renderInLivePreview).onChange(async (value) => {
+                toggle.setValue(this.plugin.settings.renderInLivePreview).onChange((value) => {
                     this.plugin.settings.renderInLivePreview = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     this.app.workspace.updateOptions();
                 })
             );
@@ -79,9 +79,9 @@ export class SqliteSettingTab extends PluginSettingTab {
             .setName("Render Markdown in cells")
             .setDesc("Enabled: **text** will be bold, links clickable. Disabled: shows raw database text.")
             .addToggle((toggle) =>
-                toggle.setValue(this.plugin.settings.renderMarkdownInCells).onChange(async (value) => {
+                toggle.setValue(this.plugin.settings.renderMarkdownInCells).onChange((value) => {
                     this.plugin.settings.renderMarkdownInCells = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     this.app.workspace.updateOptions();
                 })
             );
@@ -92,9 +92,9 @@ export class SqliteSettingTab extends PluginSettingTab {
             .addDropdown((drop) => {
                 Object.entries(TABLE_STYLES).forEach(([key, label]: [string, string]) => drop.addOption(key, label));
                 drop.setValue(this.plugin.settings.tableStyle);
-                drop.onChange(async (value) => {
+                drop.onChange((value) => {
                     this.plugin.settings.tableStyle = value;
-                    await this.plugin.saveSettings();
+                    void this.plugin.saveSettings();
                     this.app.workspace.updateOptions();
                 });
             });

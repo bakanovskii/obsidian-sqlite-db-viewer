@@ -30,16 +30,19 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                 if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
                 // Debounce to 600ms to prevent UI freezing while typing rapidly
                 this.debounceTimer = window.setTimeout(() => {
-                    requestAnimationFrame(() => this.updateEmbeds());
+                    window.requestAnimationFrame(() => {
+                        this.updateEmbeds();
+                    });
                 }, 600);
             }
 
             updateEmbeds() {
                 if (!this.plugin.settings.renderInLivePreview) return;
 
-                const embeds = this.view.dom.querySelectorAll(DOM_CLASSES.EMBED_SELECTOR) as NodeListOf<HTMLElement>;
+                const embeds = Array.from(this.view.dom.querySelectorAll(DOM_CLASSES.EMBED_SELECTOR));
 
-                embeds.forEach((embed) => {
+                embeds.forEach((el) => {
+                    const embed = el as HTMLElement;
                     const src = embed.getAttribute(DOM_ATTRIBUTES.SRC) || "";
                     const alt = embed.getAttribute(DOM_ATTRIBUTES.ALT) || "";
 
@@ -54,7 +57,7 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                         if (this.activeRenderers.has(embed)) {
                             const renderer = this.activeRenderers.get(embed)!;
                             embed.setAttribute(DOM_ATTRIBUTES.QUERY, alt);
-                            renderer.updateQuery(alt);
+                            void renderer.updateQuery(alt);
                             return;
                         }
                     }
@@ -88,7 +91,7 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                             e.preventDefault();
                             const pos = this.view.posAtDOM(embed);
                             if (pos !== null) {
-                                setTimeout(() => {
+                                window.setTimeout(() => {
                                     this.view.dispatch({ selection: { anchor: pos, head: pos } });
                                     this.view.focus();
                                 }, 10);
@@ -97,7 +100,7 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                         (e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            this.plugin.app.workspace.getLeaf(true).openFile(file);
+                            void this.plugin.app.workspace.getLeaf(true).openFile(file);
                         },
                         (isEdit: boolean) => {
                             if (renderer) renderer.setEditMode(isEdit);
@@ -105,16 +108,16 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                         (e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            if (renderer) renderer.refresh();
+                            if (renderer) void renderer.refresh();
                         }
                     );
 
                     try {
                         renderer = new SqliteResultRenderer(tableContainer, this.plugin, alt, file);
-                        renderer.load();
+                        void renderer.load();
                         this.activeRenderers.set(embed, renderer);
                     } catch (e) {
-                        tableContainer.textContent = `SQL Error: ${e}`;
+                        tableContainer.textContent = `SQL Error: ${String(e)}`;
                     }
                 });
             }

@@ -4,52 +4,67 @@
 }
 
 /* --- TABLE LAYOUT LOCK (Safely scoped to our plugin only) --- */
-.sqlite-table-wrapper {
+.workspace-leaf-content .sqlite-table-wrapper,
+.markdown-rendered .sqlite-table-wrapper {
     width: 100%;
-    overflow-x: auto !important; /* Keeps the safe horizontal scrolling */
+    overflow-x: auto;
 }
-.sqlite-table-wrapper table {
-    width: 100% !important;
+.workspace-leaf-content .sqlite-table-wrapper table,
+.markdown-rendered .sqlite-table-wrapper table {
+    width: 100%;
 }
-.sqlite-db-window table,.sqlite-table-wrapper {
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
+.workspace-leaf-content .sqlite-db-window table,
+.workspace-leaf-content .sqlite-table-wrapper,
+.markdown-rendered .sqlite-db-window table,
+.markdown-rendered .sqlite-table-wrapper {
+    margin-top: 0;
+    margin-bottom: 0;
 } 
 
 /* --- SORTING HIGHLIGHTS --- */
-th.sqlite-sort-asc {
-    background-color: var(--background-modifier-hover) !important;
-    box-shadow: inset 0 -3px 0 0 var(--interactive-accent) !important;
+.workspace-leaf-content th.sqlite-sort-asc,
+.markdown-rendered th.sqlite-sort-asc {
+    background-color: var(--background-modifier-hover);
+    box-shadow: inset 0 -3px 0 0 var(--interactive-accent);
 }
-th.sqlite-sort-desc {
-    background-color: var(--background-modifier-hover) !important;
-    box-shadow: inset 0 3px 0 0 var(--interactive-accent) !important;
+.workspace-leaf-content th.sqlite-sort-desc,
+.markdown-rendered th.sqlite-sort-desc {
+    background-color: var(--background-modifier-hover);
+    box-shadow: inset 0 3px 0 0 var(--interactive-accent);
 }
 
 /* --- PREMIUM THEME --- */
-.sqlite-theme-premium-wrapper {
+.workspace-leaf-content .sqlite-theme-premium-wrapper,
+.markdown-rendered .sqlite-theme-premium-wrapper {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    border-top: 3px solid var(--interactive-accent) !important;
+    border-top: 3px solid var(--interactive-accent);
     background-color: var(--background-primary);
     border-radius: 6px;
 }
-.sqlite-theme-premium-table th,
-.sqlite-theme-premium-table td {
-    border-bottom: 1px solid var(--background-modifier-border) !important;
-    border-right: 1px solid var(--background-modifier-border) !important; /* Pure CSS Grid */
-    background-color: transparent !important;
+.workspace-leaf-content .sqlite-theme-premium-table th,
+.workspace-leaf-content .sqlite-theme-premium-table td,
+.markdown-rendered .sqlite-theme-premium-table th,
+.markdown-rendered .sqlite-theme-premium-table td {
+    border-bottom: 1px solid var(--background-modifier-border);
+    border-right: 1px solid var(--background-modifier-border);
+    background-color: transparent;
     transition: background-color 0.2s ease;
 }
-.sqlite-theme-premium-table th {
-    background-color: var(--background-secondary-alt) !important;
-    color: var(--text-muted) !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-    font-size: 0.85em !important;
+
+/* ИСПРАВЛЕНО: Сброс шахматного порядка колонок Обсидиана */
+.workspace-leaf-content .sqlite-theme-premium-table th:nth-child(n),
+.markdown-rendered .sqlite-theme-premium-table th:nth-child(n) {
+    background-color: var(--background-secondary-alt);
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.85em;
 }
-.sqlite-theme-premium-table tr:hover td {
-    background-color: var(--background-modifier-hover) !important;
+
+.workspace-leaf-content .sqlite-theme-premium-table tr:hover td,
+.markdown-rendered .sqlite-theme-premium-table tr:hover td {
+    background-color: var(--background-modifier-hover);
 }
 
 /* --- MINIMAL EXPLORER UI --- */
@@ -73,12 +88,13 @@ th.sqlite-sort-desc {
     margin-bottom: 4px;
     outline: none;
 }
-.sqlite-sidebar-btn:hover, .sqlite-sidebar-btn:focus-visible {
+.workspace-leaf-content .sqlite-sidebar-btn:hover,
+.workspace-leaf-content .sqlite-sidebar-btn:focus-visible {
     background-color: var(--background-modifier-hover);
     color: var(--text-normal);
-    border-color: var(--interactive-accent) !important;
+    border-color: var(--interactive-accent);
     transform: translateX(4px);
-    box-shadow: 0 0 0 1px var(--interactive-accent) !important; 
+    box-shadow: 0 0 0 1px var(--interactive-accent); 
 }
 .sqlite-top-buttons {
     display: flex;
@@ -100,8 +116,7 @@ th.sqlite-sort-desc {
     display: flex;
     gap: 8px;
     width: 100%;
-    justify-content:
-    flex-end;
+    justify-content: flex-end;
     margin-top: 10px;
 }
 
@@ -120,17 +135,21 @@ th.sqlite-sort-desc {
     cursor: pointer; transition: all 0.2s ease;
     box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
-.sqlite-action-btn:hover {
+.workspace-leaf-content .sqlite-action-btn:hover,
+.markdown-rendered .sqlite-action-btn:hover,
+.modal-container .sqlite-action-btn:hover {
     background-color: var(--background-modifier-hover);
     color: var(--text-normal);
-    border-color: var(--interactive-accent) !important;
-    box-shadow: 0 0 0 1px var(--interactive-accent) !important; 
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent); 
 }
-.sqlite-action-btn.is-danger:hover {
+.workspace-leaf-content .sqlite-action-btn.is-danger:hover,
+.markdown-rendered .sqlite-action-btn.is-danger:hover,
+.modal-container .sqlite-action-btn.is-danger:hover {
     background-color: rgba(var(--color-red-rgb), 0.1);
-    border-color: var(--text-error) !important;
+    border-color: var(--text-error);
     color: var(--text-error);
-    box-shadow: 0 0 0 1px var(--text-error) !important;
+    box-shadow: 0 0 0 1px var(--text-error);
 }
 .sqlite-action-btn.is-danger:hover svg {
     color: var(--text-error);
@@ -218,21 +237,22 @@ th.sqlite-sort-desc {
     border-radius: 8px;
     box-shadow: inset 0 2px 8px rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.02); 
 }
+
 /* --- SLEEK NATIVE ACCENT AUGMENTATION --- */
-.sqlite-modal .sqlite-accent-input,
-.sqlite-modal select.dropdown.sqlite-accent-input {
-    border: 1px solid var(--background-modifier-border) !important;
-    background-color: var(--background-primary) !important;
-    transition: all 0.2s ease !important;
+.modal-container .sqlite-modal .sqlite-accent-input,
+.modal-container .sqlite-modal select.dropdown.sqlite-accent-input {
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    transition: all 0.2s ease;
 }
 
-.sqlite-modal .sqlite-accent-input:hover, 
-.sqlite-modal .sqlite-accent-input:focus,
-.sqlite-modal select.dropdown.sqlite-accent-input:hover,
-.sqlite-modal select.dropdown.sqlite-accent-input:focus {
-    border-color: var(--interactive-accent) !important;
-    box-shadow: 0 0 0 1px var(--interactive-accent) !important;
-    outline: none !important;
+.modal-container .sqlite-modal .sqlite-accent-input:hover, 
+.modal-container .sqlite-modal .sqlite-accent-input:focus,
+.modal-container .sqlite-modal select.dropdown.sqlite-accent-input:hover,
+.modal-container .sqlite-modal select.dropdown.sqlite-accent-input:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+    outline: none;
 }
 
 /* --- DASHED PLUS BUTTON --- */
@@ -247,12 +267,12 @@ th.sqlite-sort-desc {
     padding: 8px; width: 100%;
     transition: all 0.2s ease;
 }
-.sqlite-dashed-btn:hover {
+.modal-container .sqlite-dashed-btn:hover {
     border-style: solid; 
-    border-color: var(--interactive-accent) !important;
+    border-color: var(--interactive-accent);
     color: var(--interactive-accent); 
     background-color: var(--background-modifier-hover);
-    box-shadow: 0 0 0 1px var(--interactive-accent) !important;
+    box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 .sqlite-snippet-btn {
@@ -266,11 +286,12 @@ th.sqlite-sort-desc {
     transition: all 0.15s ease;
     outline: none;
 }
-.sqlite-snippet-btn:hover, .sqlite-snippet-btn:focus {
-    border-color: var(--interactive-accent) !important;
+.workspace-leaf-content .sqlite-snippet-btn:hover, 
+.workspace-leaf-content .sqlite-snippet-btn:focus {
+    border-color: var(--interactive-accent);
     color: var(--text-normal);
     background-color: var(--background-modifier-hover);
-    box-shadow: 0 0 0 1px var(--interactive-accent) !important;
+    box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 /* --- LAYOUT STRUCTURE --- */
@@ -362,10 +383,11 @@ th.sqlite-sort-desc {
     display: flex;
     align-items: center;
 }
-.sqlite-db-icon svg {
-    top: 0 !important;
-    position: static !important;
-    margin: 0 !important;
+.workspace-leaf-content .sqlite-db-icon svg,
+.markdown-rendered .sqlite-db-icon svg {
+    top: 0;
+    position: static;
+    margin: 0;
 }
 .sqlite-db-title {
     font-size: 12px;
@@ -412,8 +434,10 @@ th.sqlite-sort-desc {
     cursor: pointer;
     transition: all 0.2s ease;
 }
-.sqlite-pagination-select:hover,
-.sqlite-pagination-select:focus {
+.workspace-leaf-content .sqlite-pagination-select:hover,
+.workspace-leaf-content .sqlite-pagination-select:focus,
+.markdown-rendered .sqlite-pagination-select:hover,
+.markdown-rendered .sqlite-pagination-select:focus {
     border-color: var(--interactive-accent);
     box-shadow: 0 0 0 1px var(--interactive-accent);
     outline: none;
@@ -432,10 +456,11 @@ th.sqlite-sort-desc {
     color: var(--text-muted);
     transition: all 0.2s ease;
 }
-.sqlite-pagination-btn:hover:not(:disabled) {
+.workspace-leaf-content .sqlite-pagination-btn:hover:not(:disabled),
+.markdown-rendered .sqlite-pagination-btn:hover:not(:disabled) {
     background-color: var(--background-modifier-hover);
     color: var(--text-normal);
-    box-shadow: 0 0 0 1px var(--interactive-accent) !important;
+    box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 .sqlite-pagination-btn:disabled {
     opacity: 0.5;
@@ -458,21 +483,25 @@ th.sqlite-sort-desc {
     border-radius: 4px;
     transition: all 0.2s ease;
 }
-.sqlite-pagination-input:hover,
-.sqlite-pagination-input:focus {
-    border-color: var(--interactive-accent) !important;
-    box-shadow: 0 0 0 1px var(--interactive-accent) !important;
+.workspace-leaf-content .sqlite-pagination-input:hover,
+.workspace-leaf-content .sqlite-pagination-input:focus,
+.markdown-rendered .sqlite-pagination-input:hover,
+.markdown-rendered .sqlite-pagination-input:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
     outline: none;
 }
 
-.sqlite-table-wrapper th {
-    text-align: left !important; /* Forces alignment with the data cells */
+.workspace-leaf-content .sqlite-table-wrapper th:nth-child(n),
+.markdown-rendered .sqlite-table-wrapper th:nth-child(n) {
+    text-align: left;
     padding: 6px 10px;
     cursor: pointer;
-    white-space: nowrap !important;
+    white-space: nowrap;
+    background-color: var(--background-secondary-alt);
 }
-.sqlite-table-wrapper th,
-.sqlite-table-wrapper td {
+.workspace-leaf-content .sqlite-table-wrapper td,
+.markdown-rendered .sqlite-table-wrapper td {
     padding: 6px 10px;
 }
 
@@ -589,8 +618,9 @@ tr:hover .sqlite-row-action {
 }
 
 /* Override for ghost row and action buttons */
-.sqlite-ghost-row td {
-    padding: 0 !important;
+.workspace-leaf-content .sqlite-ghost-row td,
+.markdown-rendered .sqlite-ghost-row td {
+    padding: 0;
 }
 .sqlite-action {
     display: inline-flex;
@@ -663,11 +693,13 @@ tr:hover .sqlite-row-action {
 }
 
 /* --- SCOPED TEXT COLORS --- */
-.sqlite-error {
-    color: var(--text-error) !important;
+.workspace-leaf-content .sqlite-error,
+.markdown-rendered .sqlite-error {
+    color: var(--text-error);
 }
-.sqlite-success {
-    color: var(--text-success) !important;
+.workspace-leaf-content .sqlite-success,
+.markdown-rendered .sqlite-success {
+    color: var(--text-success);
 }
 
 /* Fix builtin codeblock overlapping */
@@ -675,5 +707,5 @@ tr:hover .sqlite-row-action {
 .cm-embed-block:has(.sqlite-db-window) .copy-code-button,
 .markdown-rendered div:has(> .sqlite-db-window) > .copy-code-button,
 .markdown-rendered pre:has(.sqlite-db-window) .copy-code-button {
-    display: none !important;
+    display: none;
 }
