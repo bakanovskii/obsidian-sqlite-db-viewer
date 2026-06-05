@@ -1,0 +1,10 @@
+node_modules/
+npm-debug.log*
+
+build/
+dist/
+coverage/
+
+# Compiled Plugin Files (Handled by GitHub Actions on release)
+main.js
+*.wasm
