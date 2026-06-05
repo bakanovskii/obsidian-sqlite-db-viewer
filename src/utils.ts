@@ -1,10 +1,10 @@
 import { App, TFile, setIcon } from "obsidian";
-import initSqlJs, { Database } from "sql.js";
+import initSqlJs, { Database, SqlJsStatic } from "sql.js";
 
 /* Global Cache for WASM sql.js */
-let sqlPromise: Promise<any> | null = null;
+let sqlPromise: Promise<SqlJsStatic> | null = null;
 
-async function getSql(app: App, pluginId: string): Promise<any> {
+async function getSql(app: App, pluginId: string): Promise<SqlJsStatic> {
     if (!sqlPromise) {
         const configDir = app.vault.configDir;
         const pluginDir = `${configDir}/plugins/${pluginId}`;
@@ -14,7 +14,7 @@ async function getSql(app: App, pluginId: string): Promise<any> {
             throw new Error(`SQLite WASM file not found at ${wasmPath}. Please reinstall the plugin.`);
         }
         const wasmBuffer = await app.vault.adapter.readBinary(wasmPath);
-        sqlPromise = initSqlJs({ wasmBinary: new Uint8Array(wasmBuffer) as any });
+        sqlPromise = initSqlJs({ wasmBinary: wasmBuffer });
     }
     return sqlPromise;
 }
@@ -26,7 +26,7 @@ async function getSql(app: App, pluginId: string): Promise<any> {
 export async function loadDb(app: App, pluginId: string, file: TFile): Promise<Database> {
     const SQL = await getSql(app, pluginId);
     const arrayBuffer = await app.vault.readBinary(file);
-    return new SQL.Database(new Uint8Array(arrayBuffer as any));
+    return new SQL.Database(new Uint8Array(arrayBuffer));
 }
 
 /**
@@ -36,12 +36,14 @@ export function applyIcon(el: HTMLElement, iconName: string) {
     setIcon(el, iconName);
     const svg = el.querySelector("svg");
     if (svg) {
-        svg.style.width = "1em";
-        svg.style.height = "1em";
-        svg.style.display = "inline-flex";
-        svg.style.verticalAlign = "middle";
-        svg.style.position = "relative";
-        svg.style.top = "-0.1em";
+        svg.setCssStyles({
+            width: "1em",
+            height: "1em",
+            display: "inline-flex",
+            verticalAlign: "middle",
+            position: "relative",
+            top: "-0.1em",
+        });
     }
 }
 

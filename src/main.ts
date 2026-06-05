@@ -27,6 +27,8 @@ import { sqliteExtension } from "./editor-extension";
 import { parseMarkdownTableRow, parseSqlCodeBlock, scanForMarkdownTable, getWrapperThemeClass } from "./formatters";
 import { preventEventPropagation } from "./utils";
 
+declare const activeDocument: Document;
+
 const SELECTORS = {
     LIVE_PREVIEW: ".markdown-source-view.mod-cm6",
     EDIT_BLOCK_BTN: ".edit-block-button",
@@ -76,7 +78,8 @@ export default class ObsidianSqlitePlugin extends Plugin {
             const embeds = Array.from(element.querySelectorAll(DOM_CLASSES.EMBED_SELECTOR));
             if (element.matches(DOM_CLASSES.EMBED_SELECTOR)) embeds.push(element);
 
-            embeds.forEach((embed) => {
+            embeds.forEach((el) => {
+                const embed = el as HTMLElement;
                 const filePath = embed.getAttribute(DOM_ATTRIBUTES.SRC) || embed.getAttribute(SELECTORS.DATA_HREF);
                 const query = embed.getAttribute(DOM_ATTRIBUTES.ALT) || "";
 
@@ -88,11 +91,10 @@ export default class ObsidianSqlitePlugin extends Plugin {
                 const file = this.app.metadataCache.getFirstLinkpathDest(filePath, context.sourcePath);
                 if (!(file instanceof TFile)) return;
 
-                const windowWrapper = document.createElement("div");
+                const windowWrapper = activeDocument.createElement("div");
                 const wrapperCls = getWrapperThemeClass(this.settings.tableStyle);
                 if (wrapperCls) windowWrapper.classList.add(wrapperCls);
 
-                // eslint-disable-next-line prefer-const
                 let renderer: SqliteResultRenderer;
 
                 const tableContainer = buildDbWindowUI(
@@ -102,7 +104,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
                     (e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        this.app.workspace.getLeaf(true).openFile(file);
+                        void this.app.workspace.getLeaf(true).openFile(file);
                     },
                     (isEdit: boolean) => {
                         if (renderer) renderer.setEditMode(isEdit);
@@ -110,7 +112,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
                     (e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        if (renderer) renderer.refresh();
+                        if (renderer) void renderer.refresh();
                     }
                 );
 
@@ -153,26 +155,25 @@ export default class ObsidianSqlitePlugin extends Plugin {
         }
 
         try {
-            const vaultAny = this.app.vault as any;
-            const configDir = vaultAny.configDir || ".obsidian";
+            const configDir = this.app.vault.configDir;
             const pluginDir = this.manifest.dir || `${configDir}/plugins/${this.manifest.id}`;
             const wasmPath = `${pluginDir}/sql-wasm.wasm`;
 
             const wasmBuffer = await this.app.vault.adapter.readBinary(wasmPath);
             const SQL = await initSqlJs({
-                wasmBinary: new Uint8Array(wasmBuffer) as any,
+                wasmBinary: wasmBuffer,
             });
 
             const db = new SQL.Database();
             const buffer = db.export().buffer;
-            const file = await this.app.vault.createBinary(fileName, buffer as any);
+            const file = await this.app.vault.createBinary(fileName, buffer as ArrayBuffer);
 
             new Notice(`Database ${fileName} created successfully!`);
 
             const leaf = this.app.workspace.getLeaf(true);
-            await leaf.openFile(file);
+            void leaf.openFile(file);
         } catch (e) {
-            new Notice(`Error creating DB: ${e}`);
+            new Notice(`Error creating DB: ${String(e)}`);
         }
     }
 
@@ -198,8 +199,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
         const windowWrapper = el.createEl("div");
         const preBlock = el.closest("pre");
         if (preBlock) {
-            preBlock.style.margin = "0";
-            preBlock.style.padding = "0";
+            preBlock.setCssStyles({ margin: "0", padding: "0" });
         }
 
         const wrapperCls = getWrapperThemeClass(this.settings.tableStyle);
@@ -221,7 +221,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
             (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.app.workspace.getLeaf(true).openFile(file);
+                void this.app.workspace.getLeaf(true).openFile(file);
             },
             (isEdit: boolean) => {
                 if (renderer) renderer.setEditMode(isEdit);
@@ -229,7 +229,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
             (e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                if (renderer) renderer.refresh();
+                if (renderer) void renderer.refresh();
             }
         );
 
@@ -238,12 +238,12 @@ export default class ObsidianSqlitePlugin extends Plugin {
             renderChild.addChild(renderer);
             renderer.load();
         } catch (e) {
-            tableContainer.createEl("span", { text: `SQL Error: ${e}`, cls: "sqlite-error" });
+            tableContainer.createEl("span", { text: `SQL Error: ${String(e)}`, cls: "sqlite-error" });
         }
     }
 
     async loadSettings() {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as SqlitePluginSettings;
     }
 
     async saveSettings() {

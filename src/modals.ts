@@ -23,7 +23,7 @@ export class ConfirmModal extends Modal {
         contentEl.createEl("p", { text: this.message });
 
         const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
-        foot.style.gap = "8px";
+        foot.setCssStyles({ gap: "8px" });
 
         createActionBtn(foot, "x", "Cancel", () => this.close());
         createActionBtn(
@@ -105,12 +105,15 @@ export class CreateTableModal extends Modal {
             t.inputEl.classList.add("sqlite-accent-input");
         });
 
-        contentEl.createEl("div", { text: "COLUMNS", cls: "sqlite-schema-title" }).style.marginTop = "25px";
+        const titleEl = contentEl.createEl("div", { text: "COLUMNS", cls: "sqlite-schema-title" });
+        titleEl.setCssStyles({ marginTop: "25px" });
 
         const colContainer = contentEl.createEl("div", { cls: "sqlite-col-container" });
-        colContainer.style.marginTop = "10px";
-        colContainer.style.paddingTop = "10px";
-        colContainer.style.borderTop = "1px solid var(--background-modifier-border)";
+        colContainer.setCssStyles({
+            marginTop: "10px",
+            paddingTop: "10px",
+            borderTop: "1px solid var(--background-modifier-border)",
+        });
 
         this.columns.forEach((col, index) => {
             const row = colContainer.createEl("div", { cls: "sqlite-col-row" });
@@ -118,7 +121,7 @@ export class CreateTableModal extends Modal {
             const nameInput = row.createEl("input", { type: "text", cls: "sqlite-accent-input" });
             nameInput.placeholder = "Column Name";
             nameInput.value = col.name;
-            nameInput.style.flex = "1";
+            nameInput.setCssStyles({ flex: "1" });
             nameInput.oninput = (e) => (col.name = (e.target as HTMLInputElement).value);
 
             const typeSelect = row.createEl("select", { cls: "dropdown sqlite-accent-input" });
@@ -129,11 +132,13 @@ export class CreateTableModal extends Modal {
             typeSelect.onchange = (e) => (col.type = (e.target as HTMLSelectElement).value);
 
             const pkLabel = row.createEl("label");
-            pkLabel.style.display = "flex";
-            pkLabel.style.alignItems = "center";
-            pkLabel.style.gap = "4px";
-            pkLabel.style.cursor = "pointer";
-            pkLabel.style.fontSize = "12px";
+            pkLabel.setCssStyles({
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                cursor: "pointer",
+                fontSize: "12px",
+            });
 
             const pkCheckbox = pkLabel.createEl("input", { type: "checkbox" });
             pkCheckbox.checked = col.isPk;
@@ -147,7 +152,6 @@ export class CreateTableModal extends Modal {
                 this.renderUI();
             };
 
-            // Using the UI factory, but keeping your specific padding!
             const delBtn = createActionBtn(
                 row,
                 "trash",
@@ -158,11 +162,11 @@ export class CreateTableModal extends Modal {
                 },
                 true
             );
-            delBtn.style.padding = "5px 8px";
+            delBtn.setCssStyles({ padding: "5px 8px" });
         });
 
         const addBtnContainer = contentEl.createEl("div");
-        addBtnContainer.style.marginTop = "15px";
+        addBtnContainer.setCssStyles({ marginTop: "15px" });
         const addBtn = addBtnContainer.createEl("button", { cls: "sqlite-dashed-btn" });
         applyIcon(addBtn, "plus");
         addBtn.onclick = () => {
@@ -210,7 +214,7 @@ export class CreateDatabaseModal extends Modal {
             let finalName = this.fileName.trim() || "NewDatabase";
             const hasValidExt = SQLITE_EXTENSIONS.some((ext) => finalName.endsWith("." + ext));
             if (!hasValidExt) finalName += ".db";
-            this.plugin.createNewDatabase(finalName);
+            void this.plugin.createNewDatabase(finalName);
         });
     }
 
@@ -272,9 +276,10 @@ export class ImportTableModal extends Modal {
             .addToggle((toggle) => toggle.setValue(this.addPrimaryKey).onChange((val) => (this.addPrimaryKey = val)));
 
         const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
-        createActionBtn(foot, "database", "Import", async () => {
+
+        createActionBtn(foot, "database", "Import", () => {
             this.close();
-            await this.doImport();
+            void this.doImport();
         });
     }
 
@@ -307,10 +312,10 @@ export class ImportTableModal extends Modal {
             stmt.free();
 
             const buffer = db.export().buffer;
-            await this.app.vault.modifyBinary(file, buffer as any);
+            await this.app.vault.modifyBinary(file, buffer as ArrayBuffer);
             new Notice(`Table ${this.tableName} imported successfully!`);
         } catch (e) {
-            new Notice(`Import error: ${e}`);
+            new Notice(`Import error: ${String(e)}`);
         }
     }
 
