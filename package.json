@@ -1,0 +1,38 @@
+{
+    "dependencies": {
+        "obsidian": "^1.13.0",
+        "sql.js": "^1.14.1"
+    },
+    "devDependencies": {
+        "@eslint/js": "^10.0.1",
+        "@types/jest": "^30.0.0",
+        "@types/node": "^25.9.1",
+        "@types/sql.js": "^1.4.11",
+        "builtin-modules": "^5.2.0",
+        "esbuild": "^0.28.0",
+        "eslint": "^10.4.1",
+        "eslint-config-prettier": "^10.1.8",
+        "globals": "^17.6.0",
+        "jest": "^30.4.2",
+        "prettier": "^3.8.3",
+        "ts-jest": "^29.4.11",
+        "typescript": "^6.0.3",
+        "typescript-eslint": "^8.60.1"
+    },
+    "name": "obsidian-sqlite",
+    "version": "0.1.0",
+    "main": "index.js",
+    "scripts": {
+        "dev": "node esbuild.config.mjs",
+        "build": "node esbuild.config.mjs production && cp node_modules/sql.js/dist/sql-wasm.wasm ./",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "format": "prettier --write \"**/*.ts\"",
+        "format:check": "prettier --check \"**/*.ts\"",
+        "test": "jest"
+    },
+    "keywords": [],
+    "author": "",
+    "license": "ISC",
+    "description": ""
+}

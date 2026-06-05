@@ -1,0 +1,72 @@
+name: Release on Version Bump
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      # only when bumped version
+      - package.json
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write 
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Configure Git Bot
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Read Version and Sync Obsidian Files
+        run: |
+          # 1. Read the version YOU set in package.json
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          
+          # 2. Update manifest.json automatically
+          jq ".version = \"$NEW_VERSION\"" manifest.json > tmp.json && mv tmp.json manifest.json
+          
+          # 3. Update versions.json automatically
+          MIN_APP=$(jq -r '.minAppVersion' manifest.json)
+          jq ". + {\"$NEW_VERSION\": \"$MIN_APP\"}" versions.json > tmp.json && mv tmp.json versions.json
+
+      - name: Commit Synced Files & Create Tag
+        run: |
+          git add manifest.json versions.json
+          git commit -m "chore: sync obsidian version files to ${{ env.NEW_VERSION }} [skip ci]"
+          git tag "${{ env.NEW_VERSION }}"
+          git push origin main
+          git push origin "${{ env.NEW_VERSION }}"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Plugin Bundle
+        run: npm run build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.NEW_VERSION }}
+          name: Release ${{ env.NEW_VERSION }}
+          draft: false
+          prerelease: false
+          files: |
+            main.js
+            manifest.json
+            styles.css
+            sql-wasm.wasm
