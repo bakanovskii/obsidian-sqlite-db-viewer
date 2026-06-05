@@ -1,10 +1,10 @@
 {
-  "id": "sqlite-db-viewer",
-  "name": "SQLite DB Viewer",
-  "version": "0.1.0",
-  "minAppVersion": "1.5.0",
-  "description": "View and query SQLite files directly in Obsidian.",
-  "author": "Alexander Bakanovskii",
-  "authorUrl": "https://github.com/bakanovskii",
-  "isDesktopOnly": false
+    "id": "sqlite-db-viewer",
+    "name": "SQLite DB Viewer",
+    "version": "0.1.0",
+    "minAppVersion": "1.5.0",
+    "description": "View and query SQLite database files.",
+    "author": "Alexander Bakanovskii",
+    "authorUrl": "https://github.com/bakanovskii",
+    "isDesktopOnly": false
 }
