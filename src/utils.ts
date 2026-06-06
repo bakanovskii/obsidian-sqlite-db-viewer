@@ -16,7 +16,7 @@ function base64ToUint8Array(base64: string): Uint8Array {
     return bytes;
 }
 
-async function getSql(): Promise<SqlJsStatic> {
+export async function getSql(): Promise<SqlJsStatic> {
     if (!sqlPromise) {
         const wasmArray = base64ToUint8Array(INJECTED_WASM_BASE64);
         sqlPromise = initSqlJs({ wasmBinary: wasmArray.buffer as ArrayBuffer });

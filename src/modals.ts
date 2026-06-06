@@ -1,4 +1,4 @@
-import { Modal, Setting, App, Notice, TFile } from "obsidian";
+import { Modal, Setting, App, Notice, TFile, TFolder } from "obsidian";
 import { SQLITE_EXTENSIONS } from "./config";
 import type ObsidianSqlitePlugin from "./main";
 import { applyIcon, loadDb, createActionBtn } from "./utils";
@@ -190,6 +190,7 @@ export class CreateTableModal extends Modal {
 
 export class CreateDatabaseModal extends Modal {
     fileName: string = "NewDatabase";
+    folderPath: string = "/";
 
     constructor(
         app: App,
@@ -208,13 +209,24 @@ export class CreateDatabaseModal extends Modal {
             .setDesc("By default uses .db extension")
             .addText((text) => text.setValue(this.fileName).onChange((val) => (this.fileName = val)));
 
+        const folders = this.app.vault.getAllLoadedFiles().filter((f) => f instanceof TFolder);
+
+        new Setting(contentEl)
+            .setName("Folder")
+            .setDesc("Select destination directory")
+            .addDropdown((drop) => {
+                drop.addOption("/", "Vault Root (/)");
+                folders.forEach((f) => {
+                    if (f.path !== "/") drop.addOption(f.path, f.path);
+                });
+                drop.setValue("/");
+                drop.onChange((val) => (this.folderPath = val));
+            });
+
         const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
         createActionBtn(foot, "check", "Create", () => {
             this.close();
-            let finalName = this.fileName.trim() || "NewDatabase";
-            const hasValidExt = SQLITE_EXTENSIONS.some((ext) => finalName.endsWith("." + ext));
-            if (!hasValidExt) finalName += ".db";
-            void this.plugin.createNewDatabase(finalName);
+            void this.plugin.createNewDatabase(this.fileName, this.folderPath);
         });
     }
 

@@ -23,10 +23,10 @@ export function stripMarkdown(text: string): string {
 export function getTableThemeClass(style: string): string {
     switch (style) {
         case "premium":
-            return "markdown-rendered sqlite-theme-premium-table";
+            return "sqlite-theme-premium-table";
         case "default":
         default:
-            return "markdown-rendered";
+            return "sqlite-theme-default-table";
     }
 }
 
