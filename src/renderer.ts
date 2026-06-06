@@ -454,7 +454,7 @@ export function buildDbWindowUI(
     onToggleEditMode?: (isEdit: boolean) => void,
     onRefresh?: (e: MouseEvent) => void
 ): HTMLElement {
-    wrapper.classList.add("sqlite-db-window");
+    wrapper.classList.add("sqlite-db-window", "markdown-rendered");
 
     const header = wrapper.createEl("div", { cls: "sqlite-db-header" });
     const titleContainer = header.createEl("div", { cls: "sqlite-db-title-container" });
@@ -622,7 +622,7 @@ export function renderDataTable(
 
     const table = wrapper.createEl("table", { cls: tableCls });
     table.setCssStyles({
-        width: "100%",
+        width: "max-content",
         minWidth: "100%",
         borderCollapse: "collapse",
         borderSpacing: "0",

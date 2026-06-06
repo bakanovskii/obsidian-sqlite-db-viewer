@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0 (06 Jun 2026)
+
+### Features
+
+- Add path select when creating DB
+
+### Bugfixes
+
+- Fix table render with other styles
+- Fix embed rendered tables autoexpand to the right
+- Fix WASM loading when creating DB
+
 ## 0.2.0 (05 Jun 2026)
 
 ### Features

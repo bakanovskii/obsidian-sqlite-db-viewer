@@ -9,7 +9,6 @@ import {
     MarkdownFileInfo,
     MarkdownRenderChild,
 } from "obsidian";
-import initSqlJs from "sql.js";
 import { SqliteView, VIEW_TYPE_SQLITE } from "./SqliteView";
 import {
     SQLITE_EXTENSIONS,
@@ -25,7 +24,7 @@ import { Prec } from "@codemirror/state";
 import { SqliteResultRenderer, buildDbWindowUI } from "./renderer";
 import { sqliteExtension } from "./editor-extension";
 import { parseMarkdownTableRow, parseSqlCodeBlock, scanForMarkdownTable, getWrapperThemeClass } from "./formatters";
-import { preventEventPropagation } from "./utils";
+import { getSql, preventEventPropagation } from "./utils";
 
 declare const activeDocument: Document;
 
@@ -148,27 +147,25 @@ export default class ObsidianSqlitePlugin extends Plugin {
         new ImportTableModal(this.app, this, headers, rows).open();
     }
 
-    async createNewDatabase(fileName: string) {
-        if (this.app.vault.getAbstractFileByPath(fileName)) {
-            new Notice(`File ${fileName} already exists!`);
+    async createNewDatabase(fileName: string, folderPath: string) {
+        let finalName = fileName.trim() || "NewDatabase";
+        const hasValidExt = SQLITE_EXTENSIONS.some((ext) => finalName.endsWith("." + ext));
+        if (!hasValidExt) finalName += ".db";
+
+        const fullPath = folderPath === "/" ? finalName : `${folderPath}/${finalName}`;
+
+        if (this.app.vault.getAbstractFileByPath(fullPath)) {
+            new Notice(`File ${fullPath} already exists!`);
             return;
         }
 
         try {
-            const configDir = this.app.vault.configDir;
-            const pluginDir = this.manifest.dir || `${configDir}/plugins/${this.manifest.id}`;
-            const wasmPath = `${pluginDir}/sql-wasm.wasm`;
-
-            const wasmBuffer = await this.app.vault.adapter.readBinary(wasmPath);
-            const SQL = await initSqlJs({
-                wasmBinary: wasmBuffer,
-            });
-
+            const SQL = await getSql();
             const db = new SQL.Database();
             const buffer = db.export().buffer;
-            const file = await this.app.vault.createBinary(fileName, buffer as ArrayBuffer);
+            const file = await this.app.vault.createBinary(fullPath, buffer as ArrayBuffer);
 
-            new Notice(`Database ${fileName} created successfully!`);
+            new Notice(`Database ${fullPath} created successfully!`);
 
             const leaf = this.app.workspace.getLeaf(true);
             void leaf.openFile(file);
