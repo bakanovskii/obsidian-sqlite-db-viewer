@@ -8,6 +8,7 @@ import {
     MarkdownView,
     MarkdownFileInfo,
     MarkdownRenderChild,
+    MarkdownRenderer,
 } from "obsidian";
 import { SqliteView, VIEW_TYPE_SQLITE } from "./SqliteView";
 import {
@@ -178,26 +179,17 @@ export default class ObsidianSqlitePlugin extends Plugin {
         const renderChild = new MarkdownRenderChild(el);
         ctx.addChild(renderChild);
 
-        const isLivePreview = el.closest(SELECTORS.LIVE_PREVIEW) !== null;
-        if (isLivePreview && !this.settings.renderInLivePreview) {
-            const pre = el.createEl("pre");
-            pre.createEl("code", { text: source, cls: "language-sqlite" });
-            return;
-        }
-
         const { dbPath, query } = parseSqlCodeBlock(source);
         const file = this.app.metadataCache.getFirstLinkpathDest(dbPath, sourcePath);
 
         if (!dbPath || !(file instanceof TFile)) {
-            el.createEl("span", { text: `Error: DB not found -> ${dbPath}`, cls: "error" });
+            el.empty();
+            el.createEl("span", { text: `Error: DB not found -> ${dbPath}`, cls: "sqlite-error" });
             return;
         }
 
+        el.empty();
         const windowWrapper = el.createEl("div");
-        const preBlock = el.closest("pre");
-        if (preBlock) {
-            preBlock.setCssStyles({ margin: "0", padding: "0" });
-        }
 
         const wrapperCls = getWrapperThemeClass(this.settings.tableStyle);
         if (wrapperCls) windowWrapper.classList.add(wrapperCls);
@@ -212,8 +204,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
                 e.preventDefault();
                 e.stopPropagation();
                 const nativeBtn = el.parentElement?.querySelector(SELECTORS.EDIT_BLOCK_BTN) as HTMLElement;
-                if (nativeBtn) nativeBtn.click();
-                else el.click();
+                nativeBtn?.click();
             },
             (e) => {
                 e.preventDefault();
@@ -232,8 +223,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
 
         try {
             renderer = new SqliteResultRenderer(tableContainer, this, query, file, false);
-            renderChild.addChild(renderer);
-            renderer.load();
+            ctx.addChild(renderer);
         } catch (e) {
             tableContainer.createEl("span", { text: `SQL Error: ${String(e)}`, cls: "sqlite-error" });
         }

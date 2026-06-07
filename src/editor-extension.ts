@@ -37,8 +37,6 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
             }
 
             updateEmbeds() {
-                if (!this.plugin.settings.renderInLivePreview) return;
-
                 const embeds = Array.from(this.view.dom.querySelectorAll(DOM_CLASSES.EMBED_SELECTOR));
 
                 embeds.forEach((el) => {
