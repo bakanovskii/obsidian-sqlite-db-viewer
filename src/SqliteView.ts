@@ -621,18 +621,17 @@ export class SqliteView extends FileView {
         const prevCols = [...this.visibleColumns];
         const prevQuery = this.terminalQuery;
 
-        this.cleanupDatabase();
-
-        window.setTimeout(async () => {
+        // Don't clean DOM until new DB ready
+        void (async () => {
             try {
-                this.db = await loadDb(this.app, this.plugin.manifest.id, this.fileObj);
+                // Load db in background and close only when ready
+                const newDb = await loadDb(this.app, this.plugin.manifest.id, this.fileObj);
+                if (this.db) {
+                    this.db.close();
+                }
+                this.db = newDb;
 
-                this.contentEl.setCssStyles({
-                    display: "flex",
-                    height: "100%",
-                    padding: "0",
-                });
-
+                // Restore state and etc
                 let tableExists = false;
                 if (prevTable) {
                     const safeName = prevTable.replace(/"/g, '""');
@@ -644,12 +643,13 @@ export class SqliteView extends FileView {
                 this.visibleColumns = tableExists ? prevCols : [];
                 this.terminalQuery = prevQuery;
 
+                // Rewrite DOM in 1 frame
                 this.renderLayout();
                 new Notice("Database refreshed!");
             } catch (e) {
                 new Notice(`Database load error: ${String(e)}`);
             }
-        }, 50);
+        })();
     }
 
     async onClose() {
