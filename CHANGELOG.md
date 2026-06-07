@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2 (08 Jun 2026)
+
+### Features
+
+- Bump version to rerun autotests
+
 ## 0.5.1 (08 Jun 2026)
 
 ### Bugfixes
