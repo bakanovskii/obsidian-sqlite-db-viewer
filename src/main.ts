@@ -112,6 +112,11 @@ export default class ObsidianSqlitePlugin extends Plugin {
                         e.stopPropagation();
                         e.preventDefault();
                         if (renderer) void renderer.refresh();
+                    },
+                    (e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        if (renderer) void renderer.copyToClipboard();
                     }
                 );
 
@@ -217,6 +222,11 @@ export default class ObsidianSqlitePlugin extends Plugin {
                 e.stopPropagation();
                 e.preventDefault();
                 if (renderer) void renderer.refresh();
+            },
+            (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (renderer) void renderer.copyToClipboard();
             }
         );
 

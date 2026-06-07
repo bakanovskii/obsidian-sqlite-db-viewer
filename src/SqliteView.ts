@@ -469,10 +469,7 @@ export class SqliteView extends FileView {
             }
         };
 
-        const styleType = this.plugin.settings.tableStyle || "default";
-        const tableCls = getTableThemeClass(styleType);
-
-        const schemaTable = schemaContent.createEl("table", { cls: tableCls });
+        const schemaTable = schemaContent.createEl("table", { cls: "sqlite-schema-table" });
         schemaTable.setCssStyles({
             width: "100%",
             borderCollapse: "collapse",
@@ -540,7 +537,9 @@ export class SqliteView extends FileView {
             };
         });
 
-        const editModeBtn = dataHeader.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        // Wrap actions in a dedicated layout container to prevent center drift
+        const actionsGroup = dataHeader.createEl("div", { cls: "sqlite-header-actions" });
+        const editModeBtn = actionsGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(editModeBtn, "pencil");
         editModeBtn.title = "Toggle Edit Mode (Live)";
 
@@ -571,6 +570,33 @@ export class SqliteView extends FileView {
         };
         editModeBtn.onmouseleave = () => {
             if (!this.isEditMode) editModeBtn.setCssStyles({ opacity: "0.5" });
+        };
+
+        const copyMdBtn = actionsGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        applyIcon(copyMdBtn, "clipboard-copy");
+        copyMdBtn.title = "Copy view as Markdown Table";
+        copyMdBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (currentRenderer) {
+                void currentRenderer.copyToClipboard();
+                // Apply the full glow effect
+                copyMdBtn.setCssStyles({
+                    opacity: "1",
+                    color: "var(--interactive-accent)",
+                    filter: "drop-shadow(0 0 5px var(--interactive-accent))",
+                });
+
+                // Revert back to normal after 250ms
+                window.setTimeout(
+                    () =>
+                        copyMdBtn.setCssStyles({
+                            opacity: "0.5",
+                            color: "inherit",
+                            filter: "none",
+                        }),
+                    250
+                );
+            }
         };
 
         const dataContainer = this.mainArea.createEl("div");

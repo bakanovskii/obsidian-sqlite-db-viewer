@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 (08 Jun 2026)
+
+### Features
+
+- Add column filters
+- Add markdown copy button
+
 ## 0.4.0 (07 Jun 2026)
 
 ### Features

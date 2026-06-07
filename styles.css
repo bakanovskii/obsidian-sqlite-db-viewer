@@ -557,12 +557,19 @@
     border-radius: 4px;
 }
 
+/* DB EXPLORER BUTTON ALIGNMENT */
 .sqlite-data-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
 }
+.sqlite-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 .sqlite-col-bar {
     display: flex;
     gap: 6px;
@@ -702,10 +709,233 @@ tr:hover .sqlite-row-action {
     color: var(--text-success);
 }
 
-/* Fix builtin codeblock overlapping */
+/* --- COLUMN FILTER SYSTEM --- */
+.sqlite-th-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 8px;
+}
+.sqlite-th-content > span:first-child {
+    flex: 1;
+    cursor: pointer;
+}
+.sqlite-filter-btn {
+    cursor: pointer;
+    opacity: 0.3;
+    transition: opacity 0.2s, color 0.2s;
+    display: flex;
+    align-items: center;
+    padding: 2px;
+}
+.sqlite-filter-btn:hover, .sqlite-filter-btn.is-active {
+    opacity: 1;
+    color: var(--interactive-accent);
+}
+
+/* Floating Popover */
+.sqlite-filter-popup {
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    padding: 12px;
+    width: 240px;
+    font-size: 13px;
+    color: var(--text-normal);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.sqlite-filter-header {
+    font-weight: bold;
+    font-size: 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Tooltip Help Icon */
+.sqlite-filter-help {
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+    padding: 4px;
+    border-radius: 4px;
+}
+.sqlite-filter-help:hover {
+    opacity: 1;
+    color: var(--interactive-accent);
+}
+.sqlite-filter-help svg {
+    width: 14px;
+    height: 14px;
+}
+
+.sqlite-filter-help-text {
+    display: none;
+    font-size: 11.5px;
+    color: var(--text-muted);
+    background: var(--background-secondary-alt);
+    padding: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--background-modifier-border);
+    line-height: 1.4;
+}
+.sqlite-filter-help-text.is-visible {
+    display: block;
+}
+.sqlite-filter-help-text code {
+    background: var(--background-primary);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+/* Strip unwanted focus/active glows */
+.sqlite-filter-input {
+    width: 100%;
+    background-color: var(--background-modifier-form-field);
+    border: 1px solid var(--background-modifier-border);
+    color: var(--text-normal);
+    padding: 6px 8px;
+    border-radius: 4px;
+    outline: none !important;
+    box-shadow: none !important;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.sqlite-filter-input:focus {
+    border-color: var(--interactive-accent) !important;
+    box-shadow: 0 0 0 1px var(--interactive-accent) !important;
+}
+
+.sqlite-filter-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.sqlite-filter-list-actions {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+    cursor: pointer;
+}
+.sqlite-filter-list-actions span:hover {
+    color: var(--text-normal);
+    text-decoration: underline;
+}
+
+.sqlite-filter-checkboxes {
+    max-height: 160px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border: 1px solid var(--background-modifier-border);
+    padding: 6px;
+    border-radius: 4px;
+    background-color: var(--background-secondary);
+}
+.sqlite-filter-checkboxes label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    word-break: break-all;
+}
+.sqlite-filter-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+/* Clean action buttons */
+.sqlite-filter-btn-clear,
+.sqlite-filter-btn-apply {
+    flex: 1;
+    padding: 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--background-modifier-border);
+    font-weight: 500;
+    transition: all 0.2s ease;
+    outline: none !important;
+}
+.sqlite-filter-btn-clear {
+    background: var(--background-secondary);
+    color: var(--text-normal);
+}
+.sqlite-filter-btn-apply {
+    background: var(--interactive-accent);
+    color: var(--text-on-accent);
+    border-color: var(--interactive-accent);
+}
+.sqlite-filter-btn-clear:hover,
+.sqlite-filter-btn-clear:focus,
+.sqlite-filter-btn-apply:hover,
+.sqlite-filter-btn-apply:focus {
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+/* CLEANER SCHEMA UI */
+table.sqlite-schema-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-bottom: 25px;
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+.sqlite-schema-th {
+    background-color: var(--background-secondary-alt);
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    text-align: left;
+}
+.sqlite-schema-td {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    color: var(--text-normal);
+    background-color: transparent;
+}
+.sqlite-schema-th:not(:last-child),
+.sqlite-schema-td:not(:last-child) {
+    border-right: 1px solid var(--background-modifier-border);
+}
+tr:last-child > .sqlite-schema-td {
+    border-bottom: none;
+}
+
+/* TODO: check if all of that needed */
+/* Remove builtin codeblock copy button */
 .cm-embed-block:has(.sqlite-db-window) .edit-block-button,
 .cm-embed-block:has(.sqlite-db-window) .copy-code-button,
 .markdown-rendered div:has(> .sqlite-db-window) > .copy-code-button,
 .markdown-rendered pre:has(.sqlite-db-window) .copy-code-button {
     display: none;
+}
+/* Removes weird cursor in codeblock */
+.cm-embed-block:has(.sqlite-db-window) {
+    cursor: default !important;
+}
+/* Removes builtin transparent window in codeblock */
+.cm-embed-block:has(.sqlite-db-window):hover,
+.cm-embed-block:has(.sqlite-db-window).cm-active {
+    box-shadow: none !important;
+    background-color: transparent !important;
 }

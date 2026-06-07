@@ -107,6 +107,11 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                             e.stopPropagation();
                             e.preventDefault();
                             if (renderer) void renderer.refresh();
+                        },
+                        (e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (renderer) void renderer.copyToClipboard();
                         }
                     );
 

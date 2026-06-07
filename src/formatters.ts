@@ -530,3 +530,54 @@ export function getSidebarObjects(db: Database): SidebarObject[] {
         type: row[1] === "view" ? "view" : "table",
     }));
 }
+
+/**
+ * Safely parses active UI filters and appends a WHERE wrapper around the base query.
+ */
+export function applyFiltersToQuery(
+    baseQuery: string,
+    filters?: Record<string, { condition: string; values: string[] }>
+): string {
+    if (!filters || Object.keys(filters).length === 0) return baseQuery;
+
+    const query = baseQuery.trim().replace(/;$/, "");
+    if (!query.toUpperCase().startsWith("SELECT")) return baseQuery;
+
+    let whereClauses: string[] = [];
+
+    for (const [col, filter] of Object.entries(filters)) {
+        const safeCol = `"${col.replace(/"/g, '""')}"`;
+        let conditions: string[] = [];
+
+        if (filter.condition) {
+            const cond = filter.condition.trim();
+            // Match math operators (>=, <=, >, <, !=, =)
+            const numCondMatch = cond.match(/^(>=|<=|>|<|!=|=)\s*(.+)$/);
+
+            if (numCondMatch) {
+                const op = numCondMatch[1];
+                const val = numCondMatch[2].replace(/'/g, "''");
+                if (!isNaN(Number(val)) && val !== "") {
+                    conditions.push(`CAST(${safeCol} AS NUMERIC) ${op} ${Number(val)}`);
+                } else {
+                    conditions.push(`${safeCol} ${op} '${val}'`);
+                }
+            } else {
+                // Fallback to text fuzzy matching
+                conditions.push(`LOWER(CAST(${safeCol} AS TEXT)) LIKE LOWER('%${cond.replace(/'/g, "''")}%')`);
+            }
+        }
+
+        if (filter.values && filter.values.length > 0) {
+            const inVals = filter.values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
+            conditions.push(`CAST(${safeCol} AS TEXT) IN (${inVals})`);
+        }
+
+        if (conditions.length > 0) {
+            whereClauses.push(`(${conditions.join(" AND ")})`);
+        }
+    }
+
+    if (whereClauses.length === 0) return baseQuery;
+    return `SELECT * FROM (${query}) WHERE ${whereClauses.join(" AND ")}`;
+}
