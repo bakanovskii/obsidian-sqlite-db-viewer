@@ -291,7 +291,7 @@ export class ImportTableModal extends Modal {
 
         createActionBtn(foot, "database", "Import", () => {
             this.close();
-            void this.doImport();
+            this.doImport().catch(console.error);
         });
     }
 

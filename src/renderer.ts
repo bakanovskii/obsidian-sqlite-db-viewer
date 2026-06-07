@@ -993,9 +993,9 @@ function showFilterPopup(
         labels.forEach((label) => {
             const text = label.textContent?.toLowerCase() || "";
             if (text.includes(searchStr)) {
-                label.style.display = "flex";
+                label.setCssStyles({ display: "flex" });
             } else {
-                label.style.display = "none";
+                label.setCssStyles({ display: "none" });
             }
         });
     });
@@ -1066,14 +1066,12 @@ function showFilterPopup(
     window.setTimeout(() => {
         const pRect = popup.getBoundingClientRect();
         if (pRect.right > window.innerWidth) {
-            popup.style.left = "auto";
-            popup.style.right = `${window.innerWidth - rect.right}px`;
+            popup.setCssStyles({ left: "auto", right: `${window.innerWidth - rect.right}px` });
         }
         if (pRect.bottom > window.innerHeight) {
-            popup.style.top = "auto";
-            popup.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+            popup.setCssStyles({ top: "auto", bottom: `${window.innerHeight - rect.top + 8}px`, opacity: "1" });
         }
-        popup.style.opacity = "1";
+        popup.setCssStyles({ opacity: "1" });
         condInput.focus();
     }, 0);
 }
