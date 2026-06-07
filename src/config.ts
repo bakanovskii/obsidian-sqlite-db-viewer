@@ -57,7 +57,7 @@ export class SqliteSettingTab extends PluginSettingTab {
                     const parsed = parseInt(value, 10);
                     if (!isNaN(parsed)) {
                         this.plugin.settings.defaultRowLimit = parsed;
-                        void this.plugin.saveSettings();
+                        this.plugin.saveSettings().catch(console.error);
                     }
                 })
             );
@@ -68,7 +68,7 @@ export class SqliteSettingTab extends PluginSettingTab {
             .addToggle((toggle) =>
                 toggle.setValue(this.plugin.settings.renderMarkdownInCells).onChange((value) => {
                     this.plugin.settings.renderMarkdownInCells = value;
-                    void this.plugin.saveSettings();
+                    this.plugin.saveSettings().catch(console.error);
                     this.app.workspace.updateOptions();
                 })
             );
@@ -81,7 +81,7 @@ export class SqliteSettingTab extends PluginSettingTab {
                 drop.setValue(this.plugin.settings.tableStyle);
                 drop.onChange((value) => {
                     this.plugin.settings.tableStyle = value;
-                    void this.plugin.saveSettings();
+                    this.plugin.saveSettings().catch(console.error);
                     this.app.workspace.updateOptions();
                 });
             });
