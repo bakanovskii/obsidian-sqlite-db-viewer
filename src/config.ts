@@ -22,14 +22,12 @@ export const DOM_CLASSES = {
 
 export interface SqlitePluginSettings {
     defaultRowLimit: number;
-    renderInLivePreview: boolean;
     renderMarkdownInCells: boolean;
     tableStyle: string;
 }
 
 export const DEFAULT_SETTINGS: SqlitePluginSettings = {
     defaultRowLimit: 10,
-    renderInLivePreview: true,
     renderMarkdownInCells: true,
     tableStyle: "default",
 };
@@ -61,17 +59,6 @@ export class SqliteSettingTab extends PluginSettingTab {
                         this.plugin.settings.defaultRowLimit = parsed;
                         void this.plugin.saveSettings();
                     }
-                })
-            );
-
-        new Setting(containerEl)
-            .setName("Render in Live Preview")
-            .setDesc("Display databases directly while editing notes")
-            .addToggle((toggle) =>
-                toggle.setValue(this.plugin.settings.renderInLivePreview).onChange((value) => {
-                    this.plugin.settings.renderInLivePreview = value;
-                    void this.plugin.saveSettings();
-                    this.app.workspace.updateOptions();
                 })
             );
 
