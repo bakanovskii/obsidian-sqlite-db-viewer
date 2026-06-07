@@ -1,4 +1,4 @@
-import { MarkdownRenderChild, TFile, MarkdownRenderer, Notice } from "obsidian";
+import { MarkdownRenderChild, TFile, MarkdownRenderer, Notice, sanitizeHTMLToDom } from "obsidian";
 import type { Database, SqlValue } from "sql.js";
 import { PAGINATION_NUMS } from "./config";
 import { applyIcon, loadDb, createActionBtn } from "./utils";
@@ -13,7 +13,14 @@ import {
     parseTableSchema,
     buildCountQuery,
     buildPaginatedQuery,
+    applyFiltersToQuery,
 } from "./formatters";
+
+declare const activeDocument: Document;
+
+interface PopupElement extends HTMLElement {
+    closePopup?: () => void;
+}
 
 export interface ColumnSchema {
     name: string;
@@ -34,7 +41,13 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     lastDbResult: { columns: string[]; totalRows: number } | null = null;
-    tableState: { page: number; rawLimit?: number; sortCol?: string; sortDir?: "ASC" | "DESC" | null } = { page: 0 };
+    tableState: {
+        page: number;
+        rawLimit?: number;
+        sortCol?: string;
+        sortDir?: "ASC" | "DESC" | null;
+        filters?: Record<string, { condition: string; values: string[] }>;
+    } = { page: 0 };
     jumpToLastPage: boolean = false;
 
     toolbarEl!: HTMLElement;
@@ -94,6 +107,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         this.columnsInfo = [];
         this.tableName = null;
         this.tableState.page = 0;
+        this.tableState.filters = {};
         await this.loadDataAndRender();
         new Notice("Table refreshed!");
     }
@@ -120,6 +134,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         this.columnsInfo = [];
         this.tableName = null;
         this.tableState.page = 0;
+        this.tableState.filters = {};
         await this.loadDataAndRender();
     }
 
@@ -167,7 +182,8 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
 
             // 2. Memory Safe Row Counting
             let totalRows = 0;
-            const countQuery = buildCountQuery(this.query);
+            const filteredQuery = applyFiltersToQuery(this.query, this.tableState.filters);
+            const countQuery = buildCountQuery(filteredQuery);
             if (countQuery) {
                 try {
                     const countRes = db.exec(countQuery);
@@ -238,7 +254,8 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             // THE SERVER-SIDE FETCH HOOK: Only pulls exactly what is needed for this page!
             async (limit, offset, sortCol, sortDir) => {
                 if (!this.activeDb) return [];
-                const paginatedQuery = buildPaginatedQuery(this.query, sortCol, sortDir, limit, offset);
+                const filteredQuery = applyFiltersToQuery(this.query, this.tableState.filters);
+                const paginatedQuery = buildPaginatedQuery(filteredQuery, sortCol, sortDir, limit, offset);
                 try {
                     const res = this.activeDb.exec(paginatedQuery);
                     return res.length > 0 ? res[0].values : [];
@@ -247,6 +264,8 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                     return [];
                 }
             },
+            (col) => this.getUniqueValues(col),
+            (col, cond, vals) => void this.applyFilter(col, cond, vals),
             (val, td, cellComponent, row, colName) => {
                 const { displayValue, mode } = determineCellRenderMode(
                     val,
@@ -444,6 +463,82 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             })();
         };
     }
+
+    async applyFilter(colName: string, condition: string, values: string[]) {
+        if (!this.tableState.filters) this.tableState.filters = {};
+
+        if (!condition && values.length === 0) {
+            delete this.tableState.filters[colName];
+        } else {
+            this.tableState.filters[colName] = { condition, values };
+        }
+
+        this.tableState.page = 0;
+
+        if (this.activeDb && this.lastDbResult) {
+            const filteredQuery = applyFiltersToQuery(this.query, this.tableState.filters);
+            const countQuery = buildCountQuery(filteredQuery);
+            if (countQuery) {
+                try {
+                    const countRes = this.activeDb.exec(countQuery);
+                    if (countRes.length > 0 && countRes[0].values.length > 0) {
+                        this.lastDbResult.totalRows = Number(countRes[0].values[0][0]);
+                    }
+                } catch {
+                    // ignore query errors while filtering
+                }
+            }
+        }
+        this.renderTable();
+    }
+
+    getUniqueValues(colName: string): string[] {
+        if (!this.activeDb) return [];
+        try {
+            // Drop THIS column's filter so we can fetch all mutually available options based on other filters
+            const filtersCopy = { ...this.tableState.filters };
+            delete filtersCopy[colName];
+
+            const query = applyFiltersToQuery(this.query, filtersCopy);
+            const safeCol = `"${colName.replace(/"/g, '""')}"`;
+
+            const distinctQuery = `SELECT DISTINCT ${safeCol} FROM (${query}) WHERE ${safeCol} IS NOT NULL ORDER BY ${safeCol} LIMIT 1000;`;
+            const res = this.activeDb.exec(distinctQuery);
+            if (res.length > 0) {
+                return res[0].values.map((r) => String(r[0]));
+            }
+        } catch {
+            // ignore syntax errors
+        }
+        return [];
+    }
+
+    async copyToClipboard() {
+        if (!this.activeDb) return;
+        try {
+            const activeQuery = applyFiltersToQuery(this.query, this.tableState.filters);
+            const res = this.activeDb.exec(activeQuery);
+
+            if (res.length > 0) {
+                const cols = res[0].columns;
+                const vals = res[0].values;
+
+                let md = `| ${cols.join(" | ")} |\n`;
+                md += `| ${cols.map(() => "---").join(" | ")} |\n`;
+
+                vals.forEach((row) => {
+                    md += `| ${row.map((cell) => (cell !== null ? String(cell).replace(/\|/g, "\\|") : "")).join(" | ")} |\n`;
+                });
+
+                await navigator.clipboard.writeText(md);
+                new Notice("Copied filtered view as Markdown!");
+            } else {
+                new Notice("No data to copy.");
+            }
+        } catch (e) {
+            new Notice(`Failed to copy data: ${String(e)}`);
+        }
+    }
 }
 
 export function buildDbWindowUI(
@@ -452,7 +547,8 @@ export function buildDbWindowUI(
     onEdit?: (e: MouseEvent) => void,
     onOpenDb?: (e: MouseEvent) => void,
     onToggleEditMode?: (isEdit: boolean) => void,
-    onRefresh?: (e: MouseEvent) => void
+    onRefresh?: (e: MouseEvent) => void,
+    onCopyAsMarkdown?: (e: MouseEvent) => void
 ): HTMLElement {
     wrapper.classList.add("sqlite-db-window", "markdown-rendered");
 
@@ -494,6 +590,30 @@ export function buildDbWindowUI(
         };
         editModeBtn.onmouseleave = () => {
             if (!isEdit) editModeBtn.setCssStyles({ opacity: "0.5" });
+        };
+    }
+
+    if (onCopyAsMarkdown) {
+        const copyMdBtn = btnGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        applyIcon(copyMdBtn, "clipboard-copy");
+        copyMdBtn.title = "Copy view as Markdown Table";
+        copyMdBtn.onclick = (e) => {
+            e.stopPropagation();
+            onCopyAsMarkdown(e);
+            copyMdBtn.setCssStyles({
+                opacity: "1",
+                color: "var(--interactive-accent)",
+                filter: "drop-shadow(0 0 5px var(--interactive-accent))",
+            });
+            window.setTimeout(
+                () =>
+                    copyMdBtn.setCssStyles({
+                        opacity: "0.5",
+                        color: "inherit",
+                        filter: "none",
+                    }),
+                250
+            );
         };
     }
 
@@ -592,7 +712,13 @@ export function renderDataTable(
     totalRows: number,
     initialLimit: number,
     parentComponent: MarkdownRenderChild,
-    tableState: { page: number; rawLimit?: number; sortCol?: string; sortDir?: "ASC" | "DESC" | null },
+    tableState: {
+        page: number;
+        rawLimit?: number;
+        sortCol?: string;
+        sortDir?: "ASC" | "DESC" | null;
+        filters?: Record<string, { condition: string; values: string[] }>;
+    },
     tableStyle: string,
     fetchData: (
         limit: number,
@@ -600,6 +726,8 @@ export function renderDataTable(
         sortCol?: string,
         sortDir?: "ASC" | "DESC" | null
     ) => Promise<SqlValue[][]>,
+    getUniqueValues: (colName: string) => string[],
+    onFilterChange: (colName: string, condition: string, values: string[]) => void,
     renderCell: (
         val: SqlValue,
         td: HTMLElement,
@@ -613,7 +741,6 @@ export function renderDataTable(
     if (tableState.rawLimit === undefined) {
         tableState.rawLimit = initialLimit;
     }
-
     let activePageChild: MarkdownRenderChild | null = null;
 
     container.empty();
@@ -630,12 +757,12 @@ export function renderDataTable(
 
     const thead = table.createEl("thead");
     const headerRow = thead.createEl("tr");
-
     columns.forEach((col: string) => {
         const th = headerRow.createEl("th");
-        th.textContent = col;
+        const thContent = th.createEl("div", { cls: "sqlite-th-content" });
+        const titleSpan = thContent.createSpan({ text: col });
 
-        th.onclick = (e) => {
+        titleSpan.onclick = (e) => {
             e.stopPropagation();
             window.getSelection()?.removeAllRanges();
 
@@ -652,6 +779,40 @@ export function renderDataTable(
             updateHeaderClasses();
             tableState.page = 0;
             void renderPage();
+        };
+
+        const filterBtn = thContent.createSpan({ cls: "sqlite-filter-btn" });
+        applyIcon(filterBtn, "filter");
+
+        if (tableState.filters && tableState.filters[col]) {
+            filterBtn.classList.add("is-active");
+        }
+
+        // Fix Filter Window Scroll Closing & Double Click Toggling
+        filterBtn.onclick = (e) => {
+            e.stopPropagation();
+
+            // Check if THIS specific column popup is already open
+            const existingPopup = activeDocument.querySelector(".sqlite-filter-popup");
+            const wasOpenForThisCol = existingPopup && existingPopup.getAttribute("data-col") === col;
+
+            // Close any open popups immediately
+            if (existingPopup) {
+                // Safely use the exposed cleanup method to remove global event listeners
+                const popupEl = existingPopup as PopupElement;
+                if (typeof popupEl.closePopup === "function") {
+                    popupEl.closePopup();
+                } else {
+                    existingPopup.remove();
+                }
+            }
+
+            // If it was already open for this column, we just wanted to close it, so stop here.
+            if (wasOpenForThisCol) return;
+
+            showFilterPopup(e, col, tableState.filters?.[col], getUniqueValues, (cond, vals) =>
+                onFilterChange(col, cond, vals)
+            );
         };
     });
 
@@ -743,4 +904,176 @@ export function renderDataTable(
     };
 
     void renderPage();
+}
+function showFilterPopup(
+    e: MouseEvent,
+    colName: string,
+    currentFilter: { condition: string; values: string[] } | undefined,
+    getUniqueValues: (col: string) => string[],
+    onApply: (condition: string, values: string[]) => void
+) {
+    activeDocument.querySelectorAll(".sqlite-filter-popup").forEach((p) => p.remove());
+
+    const target = e.currentTarget as HTMLElement;
+    const rect = target.getBoundingClientRect();
+
+    const popup = activeDocument.body.createEl("div", { cls: "sqlite-filter-popup" }) as PopupElement;
+    popup.setAttribute("data-col", colName);
+    popup.setCssStyles({
+        position: "absolute",
+        top: `${rect.bottom + 8}px`,
+        left: `${rect.left}px`,
+        zIndex: "1000",
+        opacity: "0",
+    });
+
+    const cleanupAndClose = () => {
+        popup.remove();
+        activeDocument.removeEventListener("mousedown", outsideClickListener);
+        window.removeEventListener("scroll", scrollListener, true);
+    };
+
+    // EXPOSE the cleanup function so the button can trigger it properly
+    popup.closePopup = cleanupAndClose;
+
+    const outsideClickListener = (evt: MouseEvent) => {
+        // Ignore the click if it landed on any filter button.
+        // Let the button's own onclick event handle the logic.
+        if (evt.target instanceof Element && evt.target.closest(".sqlite-filter-btn")) return;
+
+        if (!popup.contains(evt.target as Node) && evt.target !== target) cleanupAndClose();
+    };
+
+    const scrollListener = (evt: Event) => {
+        if (popup.contains(evt.target as Node)) return;
+        cleanupAndClose();
+    };
+
+    window.setTimeout(() => {
+        activeDocument.addEventListener("mousedown", outsideClickListener);
+        window.addEventListener("scroll", scrollListener, true);
+    }, 10);
+
+    const headerRow = popup.createEl("div", { cls: "sqlite-filter-header" });
+    headerRow.createSpan({ text: `Filter: ${colName}` });
+
+    const helpIcon = headerRow.createSpan({ cls: "sqlite-filter-help" });
+    applyIcon(helpIcon, "help-circle");
+
+    const helpText = popup.createEl("div", { cls: "sqlite-filter-help-text" });
+    helpText.appendChild(
+        sanitizeHTMLToDom(
+            `<strong>Math:</strong> <code>>=10</code>, <code><=100</code>, <code>!=5</code>, <code>=0</code><br><strong>Text:</strong> Exact (<code>=apple</code>) or Partial (<code>apple</code>)`
+        )
+    );
+
+    helpIcon.onclick = (evt) => {
+        evt.stopPropagation();
+        helpText.classList.toggle("is-visible");
+    };
+
+    const condInput = popup.createEl("input", {
+        type: "text",
+        placeholder: "Search or >10, =abc...",
+        cls: "sqlite-filter-input",
+    });
+    condInput.value = currentFilter?.condition || "";
+
+    // Preview with fast render
+    condInput.addEventListener("input", (e) => {
+        const rawVal = (e.target as HTMLInputElement).value.trim().toLowerCase();
+
+        // If the user is typing a math condition (e.g., ">= 10"), strip the operator
+        // so the live preview searches the checklist for the actual value ("10").
+        const match = rawVal.match(/^(?:>=|<=|>|<|!=|=)\s*(.*)$/);
+        const searchStr = match ? match[1] : rawVal;
+
+        // Iterate through the DOM nodes and hide/show them instantly
+        const labels = checkboxContainer.querySelectorAll("label");
+        labels.forEach((label) => {
+            const text = label.textContent?.toLowerCase() || "";
+            if (text.includes(searchStr)) {
+                label.style.display = "flex";
+            } else {
+                label.style.display = "none";
+            }
+        });
+    });
+
+    const listContainer = popup.createEl("div", { cls: "sqlite-filter-list" });
+    const uniqueValues = getUniqueValues(colName);
+    const selectedValues = new Set(currentFilter?.values || []);
+
+    const actions = listContainer.createEl("div", { cls: "sqlite-filter-list-actions" });
+    const selectAllBtn = actions.createEl("span", { text: "Select All" });
+    const clearAllBtn = actions.createEl("span", { text: "Clear All" });
+
+    const checkboxContainer = listContainer.createEl("div", { cls: "sqlite-filter-checkboxes" });
+
+    const renderCheckboxes = () => {
+        checkboxContainer.empty();
+        uniqueValues.forEach((val) => {
+            const label = checkboxContainer.createEl("label");
+            const cb = label.createEl("input", { type: "checkbox" });
+            cb.checked = selectedValues.has(val);
+            cb.onchange = (e) => {
+                if ((e.target as HTMLInputElement).checked) selectedValues.add(val);
+                else selectedValues.delete(val);
+            };
+            label.createSpan({ text: val });
+        });
+    };
+    renderCheckboxes();
+
+    selectAllBtn.onclick = () => {
+        uniqueValues.forEach((v) => selectedValues.add(v));
+        renderCheckboxes();
+    };
+    clearAllBtn.onclick = () => {
+        selectedValues.clear();
+        renderCheckboxes();
+    };
+
+    const footer = popup.createEl("div", { cls: "sqlite-filter-footer" });
+
+    const clearBtn = footer.createEl("button", { text: "Clear", cls: "sqlite-filter-btn-clear" });
+    clearBtn.onclick = () => {
+        onApply("", []);
+        cleanupAndClose();
+    };
+
+    const applyBtn = footer.createEl("button", { text: "Apply", cls: "sqlite-filter-btn-apply" });
+    const applyLogic = () => {
+        onApply(condInput.value.trim(), Array.from(selectedValues));
+        cleanupAndClose();
+    };
+    applyBtn.onclick = applyLogic;
+
+    // Catch Enter key on the popup container during the capture phase
+    // so Obsidian's editor hotkeys don't steal the input
+    popup.addEventListener(
+        "keydown",
+        (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                e.stopPropagation();
+                applyLogic();
+            }
+        },
+        { capture: true }
+    );
+
+    window.setTimeout(() => {
+        const pRect = popup.getBoundingClientRect();
+        if (pRect.right > window.innerWidth) {
+            popup.style.left = "auto";
+            popup.style.right = `${window.innerWidth - rect.right}px`;
+        }
+        if (pRect.bottom > window.innerHeight) {
+            popup.style.top = "auto";
+            popup.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+        }
+        popup.style.opacity = "1";
+        condInput.focus();
+    }, 0);
 }
