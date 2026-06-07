@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 (08 Jun 2026)
+
+### Bugfixes
+
+- Fix obsidian autoreview issues
+
 ## 0.5.0 (08 Jun 2026)
 
 ### Features
