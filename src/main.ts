@@ -8,7 +8,6 @@ import {
     MarkdownView,
     MarkdownFileInfo,
     MarkdownRenderChild,
-    MarkdownRenderer,
 } from "obsidian";
 import { SqliteView, VIEW_TYPE_SQLITE } from "./SqliteView";
 import {

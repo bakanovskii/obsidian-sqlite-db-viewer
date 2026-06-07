@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 (07 Jun 2026)
+
+### Features
+
+- Remove live-preview config features
+- Make refresh button in explorer smoother
+- Update `README.md`
+
+### Bugfixes
+
+- Fix live rendering option for codeblocks
+
 ## 0.3.0 (06 Jun 2026)
 
 ### Features
