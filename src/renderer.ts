@@ -314,6 +314,68 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                             if (e.key === "Enter") {
                                 e.preventDefault();
                                 td.blur();
+                            } else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+                                const selection = activeWindow.getSelection();
+                                if (!selection) return;
+
+                                // Don't forget to remove zero-width empty space too
+                                const textLen = (td.textContent || "").replace(/\u200B/g, "").length;
+
+                                let charOffset = selection.anchorOffset;
+                                if (selection.anchorNode === td) {
+                                    // If we're on the <td> itself, offset shows child-node index (0=start, >0=end)
+                                    charOffset = selection.anchorOffset === 0 ? 0 : textLen;
+                                }
+
+                                // const offset = selection.anchorOffset;
+                                let shouldJump = false;
+                                if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                                    shouldJump = true;
+                                } else if (selection.isCollapsed) {
+                                    if (e.key === "ArrowLeft" && charOffset === 0) shouldJump = true;
+                                    if (e.key === "ArrowRight" && charOffset >= textLen) shouldJump = true;
+                                }
+
+                                if (shouldJump) {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+
+                                    const tr = td.parentElement as HTMLTableRowElement;
+                                    const tbody = tr.parentElement as HTMLTableSectionElement;
+                                    const cellIdx = Array.from(tr.children).indexOf(td);
+                                    const rowIdx = Array.from(tbody.children).indexOf(tr);
+
+                                    let targetTd: HTMLElement | null = null;
+
+                                    if (e.key === "ArrowLeft" && cellIdx > 0) targetTd = tr.children[cellIdx - 1] as HTMLElement;
+                                    else if (e.key === "ArrowRight" && cellIdx < tr.children.length - 1) targetTd = tr.children[cellIdx + 1] as HTMLElement;
+                                    else if (e.key === "ArrowUp" && rowIdx > 0) targetTd = tbody.children[rowIdx - 1].children[cellIdx] as HTMLElement;
+                                    else if (e.key === "ArrowDown" && rowIdx < tbody.children.length - 1) targetTd = tbody.children[rowIdx + 1].children[cellIdx] as HTMLElement;
+
+                                    if (targetTd && targetTd.contentEditable === "true") {
+                                        targetTd.focus();
+                                        
+                                        const newRange = activeDocument.createRange();
+                                        newRange.selectNodeContents(targetTd);
+                                        
+                                        // From right to left -> EOL
+                                        if (e.key === "ArrowLeft") {
+                                            newRange.collapse(false);
+                                        } else if (e.key === "ArrowRight") {
+                                        // From left to right -> SOL
+                                            newRange.collapse(true);
+                                        } else {
+                                        // If it is closer to start -> SOL, clother to end -> EOL
+                                            newRange.collapse(textLen === 0 ? true : charOffset <= textLen / 2);
+                                        }
+                                        
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                    }
+                                } else {
+                                    // Block popup so Obsidian won't lose focus on common move
+                                    e.stopPropagation();
+                                }
                             }
                         };
                     } else if (mode === "readonly" && this.isEditMode) {
