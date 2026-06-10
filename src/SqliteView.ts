@@ -634,7 +634,13 @@ export class SqliteView extends FileView {
             e.preventDefault();
             this.isEditMode = !this.isEditMode;
             updatePencilState();
-            renderData();
+
+            // To save pagination
+            if (currentRenderer) {
+                currentRenderer.setEditMode(this.isEditMode);
+            } else {
+                renderData();
+            }
         };
 
         renderData();
