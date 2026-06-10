@@ -349,10 +349,8 @@ export function buildInlineInsertQuery(
             cols.push(`"${colName}"`);
             placeholders.push("?");
 
-            if (type.includes("INT") || type.includes("NUM") || type.includes("REAL"))
-                vals.push(0);
-            else
-                vals.push("");
+            if (type.includes("INT") || type.includes("NUM") || type.includes("REAL")) vals.push(0);
+            else vals.push("");
         });
     }
 

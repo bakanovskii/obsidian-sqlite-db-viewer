@@ -23,7 +23,13 @@ import { CreateDatabaseModal, ImportTableModal } from "./modals";
 import { Prec } from "@codemirror/state";
 import { SqliteResultRenderer, buildDbWindowUI } from "./renderer";
 import { sqliteExtension } from "./editor-extension";
-import { parseMarkdownTableRow, parseSqlCodeBlock, scanForMarkdownTable, getWrapperThemeClass, extractTableNameFromQuery } from "./formatters";
+import {
+    parseMarkdownTableRow,
+    parseSqlCodeBlock,
+    scanForMarkdownTable,
+    getWrapperThemeClass,
+    extractTableNameFromQuery,
+} from "./formatters";
 import { getSql, preventEventPropagation } from "./utils";
 
 declare const activeDocument: Document;
@@ -104,11 +110,11 @@ export default class ObsidianSqlitePlugin extends Plugin {
                         e.stopPropagation();
                         e.preventDefault();
 
-                        const tableName = extractTableNameFromQuery(query); 
+                        const tableName = extractTableNameFromQuery(query);
                         const leaf = this.app.workspace.getLeaf(true);
                         void leaf.openFile(file).then(() => {
-                            if (tableName && leaf.view.getViewType() === "sqlite-view") {
-                                const view = leaf.view as any;
+                            if (tableName && leaf.view.getViewType() === VIEW_TYPE_SQLITE) {
+                                const view = leaf.view as SqliteView;
                                 view.activeTable = tableName;
                                 view.visibleColumns = [];
                                 if (view.db) view.renderDashboard(tableName);
@@ -224,11 +230,11 @@ export default class ObsidianSqlitePlugin extends Plugin {
                 e.preventDefault();
                 e.stopPropagation();
 
-                const tableName = extractTableNameFromQuery(query); 
+                const tableName = extractTableNameFromQuery(query);
                 const leaf = this.app.workspace.getLeaf(true);
                 void leaf.openFile(file).then(() => {
-                    if (tableName && leaf.view.getViewType() === "sqlite-view") {
-                        const view = leaf.view as any;
+                    if (tableName && leaf.view.getViewType() === VIEW_TYPE_SQLITE) {
+                        const view = leaf.view as SqliteView;
                         view.activeTable = tableName;
                         view.visibleColumns = [];
                         if (view.db) view.renderDashboard(tableName);

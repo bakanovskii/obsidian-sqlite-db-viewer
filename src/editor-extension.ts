@@ -5,6 +5,7 @@ import { SqliteResultRenderer, buildDbWindowUI } from "./renderer";
 import type ObsidianSqlitePlugin from "./main";
 import { extractTableNameFromQuery, getWrapperThemeClass } from "./formatters";
 import { preventEventPropagation } from "./utils";
+import { SqliteView, VIEW_TYPE_SQLITE } from "./SqliteView";
 
 export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
     ViewPlugin.fromClass(
@@ -99,11 +100,11 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                             e.stopPropagation();
                             e.preventDefault();
 
-                            const tableName = extractTableNameFromQuery(alt); 
+                            const tableName = extractTableNameFromQuery(alt);
                             const leaf = this.plugin.app.workspace.getLeaf(true);
                             void leaf.openFile(file).then(() => {
-                                if (tableName && leaf.view.getViewType() === "sqlite-view") {
-                                    const view = leaf.view as any;
+                                if (tableName && leaf.view.getViewType() === VIEW_TYPE_SQLITE) {
+                                    const view = leaf.view as SqliteView;
                                     view.activeTable = tableName;
                                     view.visibleColumns = [];
                                     if (view.db) view.renderDashboard(tableName);

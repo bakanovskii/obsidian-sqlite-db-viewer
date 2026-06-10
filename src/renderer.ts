@@ -347,28 +347,32 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
 
                                     let targetTd: HTMLElement | null = null;
 
-                                    if (e.key === "ArrowLeft" && cellIdx > 0) targetTd = tr.children[cellIdx - 1] as HTMLElement;
-                                    else if (e.key === "ArrowRight" && cellIdx < tr.children.length - 1) targetTd = tr.children[cellIdx + 1] as HTMLElement;
-                                    else if (e.key === "ArrowUp" && rowIdx > 0) targetTd = tbody.children[rowIdx - 1].children[cellIdx] as HTMLElement;
-                                    else if (e.key === "ArrowDown" && rowIdx < tbody.children.length - 1) targetTd = tbody.children[rowIdx + 1].children[cellIdx] as HTMLElement;
+                                    if (e.key === "ArrowLeft" && cellIdx > 0)
+                                        targetTd = tr.children[cellIdx - 1] as HTMLElement;
+                                    else if (e.key === "ArrowRight" && cellIdx < tr.children.length - 1)
+                                        targetTd = tr.children[cellIdx + 1] as HTMLElement;
+                                    else if (e.key === "ArrowUp" && rowIdx > 0)
+                                        targetTd = tbody.children[rowIdx - 1].children[cellIdx] as HTMLElement;
+                                    else if (e.key === "ArrowDown" && rowIdx < tbody.children.length - 1)
+                                        targetTd = tbody.children[rowIdx + 1].children[cellIdx] as HTMLElement;
 
                                     if (targetTd && targetTd.contentEditable === "true") {
                                         targetTd.focus();
-                                        
+
                                         const newRange = activeDocument.createRange();
                                         newRange.selectNodeContents(targetTd);
-                                        
+
                                         // From right to left -> EOL
                                         if (e.key === "ArrowLeft") {
                                             newRange.collapse(false);
                                         } else if (e.key === "ArrowRight") {
-                                        // From left to right -> SOL
+                                            // From left to right -> SOL
                                             newRange.collapse(true);
                                         } else {
-                                        // If it is closer to start -> SOL, clother to end -> EOL
+                                            // If it is closer to start -> SOL, clother to end -> EOL
                                             newRange.collapse(textLen === 0 ? true : charOffset <= textLen / 2);
                                         }
-                                        
+
                                         selection.removeAllRanges();
                                         selection.addRange(newRange);
                                     }
@@ -930,21 +934,30 @@ export function renderDataTable(
         // Clear loading text
         tbody.empty();
 
+        const fragment = activeDocument.createDocumentFragment();
+
         for (const row of pageValues) {
-            const tr = tbody.createEl("tr");
+            const tr = activeDocument.createElement("tr");
             tr.setCssStyles({ position: "relative" });
 
             row.forEach((val: SqlValue, index: number) => {
-                const td = tr.createEl("td");
+                const td = activeDocument.createElement("td");
                 const displayVal = val !== null ? String(val) : "NULL";
                 td.title = displayVal;
+
                 renderCell(val, td, activePageChild!, row, columns[index]);
+                tr.appendChild(td);
             });
 
             if (renderRowAction) {
                 renderRowAction(tr, row);
             }
+
+            fragment.appendChild(tr);
         }
+
+        // Вставляем все собранные строки разом
+        tbody.appendChild(fragment);
 
         if (renderGhostRow) {
             renderGhostRow(tbody, columns.length);

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 (10 Jun 2026)
+
+### Features
+
+- Add cursor moving in table using arrows
+- Insert nothing instead of NULL on "New row" button 
+- Make unique items `LIMIT` in filters constant
+- When Open DB is clicked, now opens the table rendered not the dashboard
+- Optimize column sorting a little
+
+### Bugfixes
+
+- Fix page reset to 1 when edit-mode enabled in db explorer
+- Fix text highlighting in DB explorer tables
+
 ## 0.5.2 (08 Jun 2026)
 
 ### Features
