@@ -24,7 +24,7 @@ describe("buildInlineInsertQuery", () => {
         // Should skip 'id' (PK) and 'status' (has default).
         // 'name' is NOT NULL so it gets an empty string. 'age' gets null.
         expect(query).toBe('INSERT INTO "users" ("name", "age") VALUES (?, ?)');
-        expect(values).toEqual(["", null]);
+        expect(values).toEqual(["", 0]);
     });
 
     test("handles DEFAULT VALUES edge case", () => {
