@@ -1,6 +1,6 @@
 import { MarkdownRenderChild, TFile, MarkdownRenderer, Notice, sanitizeHTMLToDom } from "obsidian";
 import type { Database, SqlValue } from "sql.js";
-import { PAGINATION_NUMS } from "./config";
+import { PAGINATION_NUMS, FILTER_UNIQUE_VALUES_LIMIT } from "./config";
 import { applyIcon, loadDb, createActionBtn } from "./utils";
 import ObsidianSqlitePlugin from "./main";
 import { ConfirmModal } from "./modals";
@@ -502,7 +502,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             const query = applyFiltersToQuery(this.query, filtersCopy);
             const safeCol = `"${colName.replace(/"/g, '""')}"`;
 
-            const distinctQuery = `SELECT DISTINCT ${safeCol} FROM (${query}) WHERE ${safeCol} IS NOT NULL ORDER BY ${safeCol} LIMIT 1000;`;
+            const distinctQuery = `SELECT DISTINCT ${safeCol} FROM (${query}) WHERE ${safeCol} IS NOT NULL ORDER BY ${safeCol} LIMIT ${FILTER_UNIQUE_VALUES_LIMIT};`;
             const res = this.activeDb.exec(distinctQuery);
             if (res.length > 0) {
                 return res[0].values.map((r) => String(r[0]));
