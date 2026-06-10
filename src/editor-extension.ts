@@ -3,7 +3,7 @@ import { TFile } from "obsidian";
 import { SQLITE_EXTENSIONS, DOM_ATTRIBUTES, DOM_CLASSES } from "./config";
 import { SqliteResultRenderer, buildDbWindowUI } from "./renderer";
 import type ObsidianSqlitePlugin from "./main";
-import { getWrapperThemeClass } from "./formatters";
+import { extractTableNameFromQuery, getWrapperThemeClass } from "./formatters";
 import { preventEventPropagation } from "./utils";
 
 export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
@@ -98,7 +98,17 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                         (e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            void this.plugin.app.workspace.getLeaf(true).openFile(file);
+
+                            const tableName = extractTableNameFromQuery(alt); 
+                            const leaf = this.plugin.app.workspace.getLeaf(true);
+                            void leaf.openFile(file).then(() => {
+                                if (tableName && leaf.view.getViewType() === "sqlite-view") {
+                                    const view = leaf.view as any;
+                                    view.activeTable = tableName;
+                                    view.visibleColumns = [];
+                                    if (view.db) view.renderDashboard(tableName);
+                                }
+                            });
                         },
                         (isEdit: boolean) => {
                             if (renderer) renderer.setEditMode(isEdit);

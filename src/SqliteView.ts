@@ -139,13 +139,16 @@ export class SqliteView extends FileView {
     }
 
     async onLoadFile(file: TFile) {
+        const isSameFile = this.fileObj && this.fileObj.path === file.path;
         this.fileObj = file;
         this.cleanupDatabase();
 
-        this.activeTable = "";
-        this.visibleColumns = [];
-        this.terminalQuery = "";
-        this.isEditMode = false;
+        if (!isSameFile) {
+            this.activeTable = "";
+            this.visibleColumns = [];
+            this.terminalQuery = "";
+            this.isEditMode = false;
+        }
 
         window.setTimeout(async () => {
             try {
