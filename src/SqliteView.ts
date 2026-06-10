@@ -222,6 +222,7 @@ export class SqliteView extends FileView {
             flexDirection: "column",
             overflow: "auto",
             padding: "20px",
+            userSelect: "text"
         });
 
         let hasViews = false;
