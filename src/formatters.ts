@@ -340,7 +340,7 @@ export function buildInlineInsertQuery(
         columnsInfo.forEach((colMeta) => {
             const colName = String(colMeta[1]);
             const type = String(colMeta[2]).toUpperCase();
-            const notNull = colMeta[3] === 1;
+            // const notNull = colMeta[3] === 1;
             const defaultVal = colMeta[4];
             const isPk = pkColumnName === colName;
 
@@ -349,12 +349,10 @@ export function buildInlineInsertQuery(
             cols.push(`"${colName}"`);
             placeholders.push("?");
 
-            if (notNull) {
-                if (type.includes("INT") || type.includes("NUM") || type.includes("REAL")) vals.push(0);
-                else vals.push("");
-            } else {
-                vals.push(null);
-            }
+            if (type.includes("INT") || type.includes("NUM") || type.includes("REAL"))
+                vals.push(0);
+            else
+                vals.push("");
         });
     }
 
