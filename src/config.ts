@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type ObsidianSqlitePlugin from "./main";
 
+export const FILTER_UNIQUE_VALUES_LIMIT = 1000;
 export const PAGINATION_NUMS = [10, 50, 100, 500, 0];
 export const SQLITE_EXTENSIONS = ["db", "sqlite", "sqlite3"];
 export const SQLITE_CODE_BLOCK_ALIASES = ["db-query", "sqlite-query", "sqlite3-query"];
