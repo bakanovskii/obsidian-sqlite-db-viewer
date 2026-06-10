@@ -286,7 +286,8 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                         }
                     );
                 } else {
-                    td.textContent = displayValue;
+                    // Zero-width space (\u200B), so we can put cursor in empty blocks!
+                    td.textContent = displayValue === "" ? "\u200B" : displayValue;
 
                     if (mode === "editable" && row && this.lastDbResult) {
                         const pkIndex = this.lastDbResult.columns.indexOf(this.pkColumn!.name);
@@ -298,8 +299,12 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                         td.onfocus = () => td.setCssStyles({ backgroundColor: "var(--background-modifier-hover)" });
                         td.onblur = () => {
                             td.setCssStyles({ backgroundColor: "transparent" });
-                            const newVal = td.textContent;
-                            if (newVal !== displayValue) {
+
+                            // Remove zero-width space before saving and replacing
+                            const newVal = (td.textContent || "").replace(/\u200B/g, "");
+                            const originalVal = displayValue === "" ? "" : displayValue;
+
+                            if (newVal !== originalVal) {
                                 const finalVal = newVal === "NULL" ? null : newVal;
                                 const colIndex = this.lastDbResult!.columns.indexOf(colName!);
                                 void this.updateCell(colName!, finalVal, rowPkValue, row, colIndex);
