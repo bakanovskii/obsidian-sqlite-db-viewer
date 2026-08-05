@@ -1,7 +1,8 @@
 import { MarkdownRenderChild, TFile, MarkdownRenderer, Notice, sanitizeHTMLToDom } from "obsidian";
 import type { Database, SqlValue } from "sql.js";
 import { PAGINATION_NUMS, FILTER_UNIQUE_VALUES_LIMIT } from "./config";
-import { applyIcon, loadDb, createActionBtn } from "./utils";
+import { applyIcon, createActionBtn } from "./utils";
+import type { DbChangeReason, DbHandle } from "./db-manager";
 import ObsidianSqlitePlugin from "./main";
 import { ConfirmModal } from "./modals";
 import {
@@ -14,6 +15,8 @@ import {
     buildCountQuery,
     buildPaginatedQuery,
     applyFiltersToQuery,
+    parseCellInput,
+    quoteIdent,
 } from "./formatters";
 
 declare const activeDocument: Document;
@@ -34,10 +37,16 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     pkColumn: ColumnSchema | null = null;
     columnsInfo: SqlValue[][] = [];
 
-    // Local DB connection for Codeblocks
-    localDb: Database | null = null;
+    /**
+     * Shared connection for this file. Every renderer and view pointing at the same
+     * database works on the very same in-memory instance, so nobody can overwrite
+     * anybody else's changes with a stale snapshot.
+     */
+    private handle: DbHandle | null = null;
+    private isUnloaded: boolean = false;
+
     get activeDb(): Database | null {
-        return this.sharedDb || this.localDb;
+        return this.handle ? this.handle.db : null;
     }
 
     lastDbResult: { columns: string[]; totalRows: number } | null = null;
@@ -58,9 +67,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         private plugin: ObsidianSqlitePlugin,
         private query: string,
         private file: TFile,
-        private forceRaw: boolean = false,
-        private sharedDb: Database | null = null,
-        private onDbModified: () => Promise<void> = async () => {}
+        private forceRaw: boolean = false
     ) {
         super(containerEl);
     }
@@ -70,19 +77,43 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     async initializeDbAndRender() {
-        if (!this.sharedDb) {
-            this.localDb = await loadDb(this.plugin.app, this.plugin.manifest.id, this.file);
+        try {
+            const handle = await this.plugin.dbManager.acquire(this.file);
+
+            // The component may have been unloaded while the file was being read
+            if (this.isUnloaded) {
+                handle.release();
+                return;
+            }
+
+            this.handle = handle;
+            handle.onChange((reason) => this.onDatabaseChanged(reason));
+        } catch (e) {
+            this.containerEl.empty();
+            this.containerEl.createEl("span", { text: `[DB load error: ${String(e)}]`, cls: "sqlite-error" });
+            return;
         }
+
         this.containerEl.empty();
         this.toolbarEl = this.containerEl.createEl("div");
         this.tableEl = this.containerEl.createEl("div");
         await this.loadDataAndRender();
     }
 
+    /** Somebody else changed this database: drop cached results and show the current data. */
+    private onDatabaseChanged(reason: DbChangeReason) {
+        if (this.isUnloaded || !this.tableEl) return;
+        this.lastDbResult = null;
+        this.columnsInfo = [];
+        if (reason === "external") this.tableState.page = 0;
+        void this.loadDataAndRender();
+    }
+
     onunload() {
-        if (this.localDb) {
-            this.localDb.close();
-            this.localDb = null;
+        this.isUnloaded = true;
+        if (this.handle) {
+            this.handle.release();
+            this.handle = null;
         }
     }
 
@@ -96,13 +127,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     async refresh() {
-        if (!this.sharedDb) {
-            if (this.localDb) {
-                this.localDb.close();
-                this.localDb = null;
-            }
-            this.localDb = await loadDb(this.plugin.app, this.plugin.manifest.id, this.file);
-        }
+        if (this.handle) await this.handle.reload();
         this.lastDbResult = null;
         this.columnsInfo = [];
         this.tableName = null;
@@ -114,18 +139,16 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
 
     private async executeWrite(query: string, params: SqlValue[]) {
         const db = this.activeDb;
-        if (!db) return;
+        if (!db || !this.handle) return;
 
         const stmt = db.prepare(query);
-        stmt.run(params);
-        stmt.free();
-
-        if (this.sharedDb) {
-            await this.onDbModified();
-        } else {
-            const buffer = db.export().buffer;
-            await this.plugin.app.vault.modifyBinary(this.file, buffer as ArrayBuffer);
+        try {
+            stmt.run(params);
+        } finally {
+            stmt.free();
         }
+
+        await this.handle.save();
     }
 
     async updateQuery(newQuery: string) {
@@ -156,7 +179,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
 
             if (this.tableName && this.columnsInfo.length === 0) {
                 try {
-                    const schema = db.exec(`PRAGMA table_info("${this.tableName}");`);
+                    const schema = db.exec(`PRAGMA table_info(${quoteIdent(this.tableName)});`);
                     if (schema.length > 0) {
                         const parsed = parseTableSchema(schema[0].values);
                         this.columnsInfo = schema[0].values;
@@ -296,19 +319,21 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                         td.contentEditable = "true";
                         td.classList.add("sqlite-editable-cell");
 
+                        // Tracks what is actually stored, so a second blur without an
+                        // edit cannot re-submit a value that was already written
+                        let committedText = displayValue;
+
                         td.onfocus = () => td.setCssStyles({ backgroundColor: "var(--background-modifier-hover)" });
                         td.onblur = () => {
                             td.setCssStyles({ backgroundColor: "transparent" });
 
                             // Remove zero-width space before saving and replacing
-                            const newVal = (td.textContent || "").replace(/\u200B/g, "");
-                            const originalVal = displayValue === "" ? "" : displayValue;
+                            const newText = (td.textContent || "").replace(/\u200B/g, "");
+                            if (newText === committedText) return;
 
-                            if (newVal !== originalVal) {
-                                const finalVal = newVal === "NULL" ? null : newVal;
-                                const colIndex = this.lastDbResult!.columns.indexOf(colName!);
-                                void this.updateCell(colName!, finalVal, rowPkValue, row, colIndex);
-                            }
+                            committedText = newText;
+                            const colIndex = this.lastDbResult!.columns.indexOf(colName!);
+                            void this.updateCell(colName!, parseCellInput(newText), rowPkValue, row, colIndex);
                         };
                         td.onkeydown = (e) => {
                             if (e.key === "Enter") {
@@ -428,7 +453,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     async updateCell(colName: string, newVal: string | null, pkValue: SqlValue, row: SqlValue[], colIndex: number) {
         try {
             await this.executeWrite(
-                `UPDATE "${this.tableName}" SET "${colName}" = ? WHERE "${this.pkColumn!.name}" = ?`,
+                `UPDATE ${quoteIdent(this.tableName!)} SET ${quoteIdent(colName)} = ? WHERE ${quoteIdent(this.pkColumn!.name)} = ?`,
                 [newVal, pkValue]
             );
 
@@ -442,7 +467,10 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
 
     async deleteRow(pkValue: SqlValue) {
         try {
-            await this.executeWrite(`DELETE FROM "${this.tableName}" WHERE "${this.pkColumn!.name}" = ?`, [pkValue]);
+            await this.executeWrite(
+                `DELETE FROM ${quoteIdent(this.tableName!)} WHERE ${quoteIdent(this.pkColumn!.name)} = ?`,
+                [pkValue]
+            );
             await this.loadDataAndRender();
             new Notice("Row deleted!");
         } catch (e) {
@@ -571,7 +599,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             delete filtersCopy[colName];
 
             const query = applyFiltersToQuery(this.query, filtersCopy);
-            const safeCol = `"${colName.replace(/"/g, '""')}"`;
+            const safeCol = quoteIdent(colName);
 
             const distinctQuery = `SELECT DISTINCT ${safeCol} FROM (${query}) WHERE ${safeCol} IS NOT NULL ORDER BY ${safeCol} LIMIT ${FILTER_UNIQUE_VALUES_LIMIT};`;
             const res = this.activeDb.exec(distinctQuery);

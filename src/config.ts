@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, PluginSettingTab, Setting, TFolder } from "obsidian";
 import type ObsidianSqlitePlugin from "./main";
 
 export const FILTER_UNIQUE_VALUES_LIMIT = 1000;
@@ -21,16 +21,23 @@ export const DOM_CLASSES = {
     IS_LOADED: "is-loaded",
 } as const;
 
+/** Sentinel for "keep backups next to the database file itself". */
+export const BACKUP_FOLDER_ALONGSIDE = "";
+
 export interface SqlitePluginSettings {
     defaultRowLimit: number;
     renderMarkdownInCells: boolean;
     tableStyle: string;
+    safetyBackups: boolean;
+    backupFolder: string;
 }
 
 export const DEFAULT_SETTINGS: SqlitePluginSettings = {
     defaultRowLimit: 10,
     renderMarkdownInCells: true,
     tableStyle: "default",
+    safetyBackups: true,
+    backupFolder: BACKUP_FOLDER_ALONGSIDE,
 };
 
 export const TABLE_STYLES: Record<string, string> = {
@@ -73,6 +80,44 @@ export class SqliteSettingTab extends PluginSettingTab {
                     this.app.workspace.updateOptions();
                 })
             );
+
+        new Setting(containerEl)
+            .setName("Safety backups")
+            .setDesc(
+                "Keep a rotating copy of a database (3 slots) taken before the first write of a session, " +
+                    "so the state it had when you opened it can always be recovered. Copies are named " +
+                    "'<name>.backup-1.db' and open like any other database."
+            )
+            .addToggle((toggle) =>
+                toggle.setValue(this.plugin.settings.safetyBackups).onChange((value) => {
+                    this.plugin.settings.safetyBackups = value;
+                    this.plugin.saveSettings().catch(console.error);
+                    this.display();
+                })
+            );
+
+        if (this.plugin.settings.safetyBackups) {
+            const folders = this.app.vault.getAllLoadedFiles().filter((f) => f instanceof TFolder);
+
+            new Setting(containerEl)
+                .setName("Backup folder")
+                .setDesc(
+                    "Where backups are written. Inside a chosen folder the database's own folder structure " +
+                        "is mirrored, so files with the same name never collide."
+                )
+                .addDropdown((drop) => {
+                    drop.addOption(BACKUP_FOLDER_ALONGSIDE, "Next to the database (default)");
+                    folders.forEach((f) => {
+                        // The vault root would mirror back onto the database's own folder
+                        if (f.path !== "/") drop.addOption(f.path, f.path);
+                    });
+                    drop.setValue(this.plugin.settings.backupFolder);
+                    drop.onChange((value) => {
+                        this.plugin.settings.backupFolder = value;
+                        this.plugin.saveSettings().catch(console.error);
+                    });
+                });
+        }
 
         new Setting(containerEl)
             .setName("Table Design Theme")

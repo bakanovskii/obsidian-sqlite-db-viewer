@@ -1,8 +1,8 @@
 import { Modal, Setting, App, Notice, TFile, TFolder } from "obsidian";
 import { SQLITE_EXTENSIONS } from "./config";
 import type ObsidianSqlitePlugin from "./main";
-import { applyIcon, loadDb, createActionBtn } from "./utils";
-import { buildCreateTableSql, generateImportSql, stripMarkdown } from "./formatters";
+import { applyIcon, createActionBtn } from "./utils";
+import { buildCreateTableSql, generateImportSql, stripMarkdown, isBackupPath } from "./formatters";
 
 const SQLITE_DATA_TYPES = ["INTEGER", "TEXT", "REAL", "BLOB", "NUMERIC", "DATETIME (Auto)"] as const;
 
@@ -255,7 +255,10 @@ export class ImportTableModal extends Modal {
         const { contentEl } = this;
         contentEl.createEl("h2", { text: `Import table (${this.rows.length} rows)` });
 
-        const dbFiles = this.app.vault.getFiles().filter((f) => SQLITE_EXTENSIONS.includes(f.extension));
+        // Backups share the database extension, but importing into one makes no sense
+        const dbFiles = this.app.vault
+            .getFiles()
+            .filter((f) => SQLITE_EXTENSIONS.includes(f.extension) && !isBackupPath(f.path));
 
         if (dbFiles.length === 0) {
             contentEl.createEl("p", { text: "No available databases. Create a DB first." });
@@ -310,22 +313,38 @@ export class ImportTableModal extends Modal {
             const file = this.app.vault.getAbstractFileByPath(this.selectedFile);
             if (!(file instanceof TFile)) return;
 
-            const db = await loadDb(this.app, this.plugin.manifest.id, file);
+            // Import through the shared connection, so it cannot roll back
+            // changes made in a view that already has this database open
+            const handle = await this.plugin.dbManager.acquire(file);
+            try {
+                const db = handle.db;
+                if (!db) return;
 
-            const { createTableSql, insertSql } = generateImportSql(this.tableName, finalHeaders, this.addPrimaryKey);
+                const { createTableSql, insertSql } = generateImportSql(
+                    this.tableName,
+                    finalHeaders,
+                    this.addPrimaryKey
+                );
 
-            db.exec(createTableSql);
-            const stmt = db.prepare(insertSql);
+                db.exec(createTableSql);
+                const stmt = db.prepare(insertSql);
 
-            db.exec("BEGIN TRANSACTION;");
-            finalRows.forEach((row) => stmt.run(row));
-            db.exec("COMMIT;");
+                db.exec("BEGIN TRANSACTION;");
+                try {
+                    finalRows.forEach((row) => stmt.run(row));
+                    db.exec("COMMIT;");
+                } catch (e) {
+                    db.exec("ROLLBACK;");
+                    throw e;
+                } finally {
+                    stmt.free();
+                }
 
-            stmt.free();
-
-            const buffer = db.export().buffer;
-            await this.app.vault.modifyBinary(file, buffer as ArrayBuffer);
-            new Notice(`Table ${this.tableName} imported successfully!`);
+                await handle.save();
+                new Notice(`Table ${this.tableName} imported successfully!`);
+            } finally {
+                handle.release();
+            }
         } catch (e) {
             new Notice(`Import error: ${String(e)}`);
         }

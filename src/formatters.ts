@@ -1,6 +1,158 @@
 import type { Database, SqlValue } from "sql.js";
 
 /**
+ * Quotes a table or column name so that quotes, spaces and keywords in the
+ * name cannot break out of the identifier.
+ */
+export function quoteIdent(name: string): string {
+    return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+/**
+ * Quotes a value as a SQL string literal. Prefer bound parameters where possible;
+ * this exists for the few places that have to build SQL as text.
+ */
+export function quoteLiteral(value: string): string {
+    return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+/** Collapses separators and strips leading/trailing slashes from a vault path. */
+function normalizeVaultPath(path: string): string {
+    return String(path || "")
+        .replace(/\\/g, "/")
+        .replace(/\/+/g, "/")
+        .replace(/^\/+|\/+$/g, "");
+}
+
+/**
+ * Resolves where one rotating backup slot of a database lives.
+ *
+ * An empty `backupFolder` keeps the copy next to the database itself. Otherwise
+ * the database's own folder structure is mirrored under the chosen folder, so
+ * two databases with the same file name cannot overwrite each other's backups.
+ *
+ * The database's own extension is kept (`stats.db` becomes `stats.backup-1.db`)
+ * so that Obsidian shows the backup in the file explorer and it opens straight
+ * into the SQLite view — an unregistered extension would be hidden instead.
+ */
+export function buildBackupPath(dbPath: string, backupFolder: string, slot: number): string {
+    const normalized = normalizeVaultPath(dbPath);
+    const fileName = normalized.split("/").pop() || normalized;
+    const dbFolder = normalized.slice(0, Math.max(0, normalized.length - fileName.length - 1));
+
+    const root = normalizeVaultPath(backupFolder);
+    const folder = root ? [root, dbFolder].filter(Boolean).join("/") : dbFolder;
+
+    // Split on the final dot only, so "my.notes.sqlite3" keeps "my.notes" as its stem
+    const dot = fileName.lastIndexOf(".");
+    const stem = dot > 0 ? fileName.slice(0, dot) : fileName;
+    const extension = dot > 0 ? fileName.slice(dot + 1) : "";
+
+    const name = extension ? `${stem}.backup-${slot}.${extension}` : `${stem}.backup-${slot}`;
+    return folder ? `${folder}/${name}` : name;
+}
+
+/**
+ * True if a path looks like one of our backup slots. Used to keep backups out of
+ * database pickers, and to avoid ever backing up a backup.
+ */
+export function isBackupPath(path: string): boolean {
+    const fileName = normalizeVaultPath(path).split("/").pop() || "";
+    return /\.backup-\d+(\.[^.]+)?$/.test(fileName);
+}
+
+/**
+ * Escapes regex metacharacters so object names can be embedded in a pattern safely.
+ */
+export function escapeRegex(text: string): string {
+    return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Blanks out comments and quoted text so keyword scanning cannot be fooled by a
+ * table called "delete" or by the word INSERT inside a string literal.
+ */
+export function stripSqlNoise(sql: string): string {
+    return String(sql || "")
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/--[^\n]*/g, " ")
+        .replace(/'(?:[^']|'')*'/g, "''")
+        .replace(/"(?:[^"]|"")*"/g, '""')
+        .replace(/`[^`]*`/g, "``")
+        .replace(/\[[^\]]*\]/g, "[]");
+}
+
+const MUTATING_STATEMENTS = [
+    "INSERT",
+    "REPLACE",
+    "UPDATE",
+    "DELETE",
+    "CREATE",
+    "DROP",
+    "ALTER",
+    "VACUUM",
+    "REINDEX",
+    "ATTACH",
+    "DETACH",
+    "ANALYZE",
+];
+
+const SCHEMA_STATEMENTS = ["CREATE", "DROP", "ALTER"];
+
+/**
+ * Decides whether a batch of SQL actually changes the database.
+ *
+ * Persisting a sql.js database means rewriting the entire file, so a plain SELECT
+ * must never trigger a save: doing so would republish a stale in-memory snapshot
+ * over whatever is currently on disk.
+ */
+export function analyzeSqlEffect(sql: string): { mutates: boolean; changesSchema: boolean } {
+    let mutates = false;
+    let changesSchema = false;
+
+    for (const statement of stripSqlNoise(sql).split(";")) {
+        const trimmed = statement.trim();
+        if (!trimmed) continue;
+
+        const keyword = (trimmed.match(/^[a-zA-Z]+/) || [""])[0].toUpperCase();
+
+        if (keyword === "WITH") {
+            // A CTE is read-only unless it feeds a write statement
+            if (/\b(INSERT|REPLACE|UPDATE|DELETE)\b/i.test(trimmed)) mutates = true;
+            continue;
+        }
+        if (keyword === "PRAGMA") {
+            if (trimmed.includes("=")) mutates = true;
+            continue;
+        }
+
+        if (MUTATING_STATEMENTS.includes(keyword)) mutates = true;
+        if (SCHEMA_STATEMENTS.includes(keyword)) changesSchema = true;
+    }
+
+    return { mutates, changesSchema };
+}
+
+/**
+ * Editable cells use the text "NULL" as the sentinel for a real SQL NULL, so a
+ * literal "NULL" string has to be escaped on its way into the grid, otherwise
+ * saving the cell untouched would silently destroy the value.
+ */
+export function formatCellForEdit(value: SqlValue): string {
+    if (value === null) return "NULL";
+    const text = String(value);
+    return /^\\*NULL$/.test(text) ? `\\${text}` : text;
+}
+
+/**
+ * Inverse of {@link formatCellForEdit}: turns grid text back into a stored value.
+ */
+export function parseCellInput(raw: string): string | null {
+    if (raw === "NULL") return null;
+    return /^\\+NULL$/.test(raw) ? raw.slice(1) : raw;
+}
+
+/**
  * Strips markdown syntax from a string before inserting it into a database.
  */
 export function stripMarkdown(text: string): string {
@@ -52,8 +204,7 @@ export function buildCreateTableSql(
 ): string {
     const defs = columns
         .map((c) => {
-            const safeColName = c.name.replace(/"/g, '""');
-            let def = `"${safeColName}" `;
+            let def = `${quoteIdent(c.name)} `;
 
             if (c.type === "DATETIME (Auto)") {
                 def += "DATETIME DEFAULT CURRENT_TIMESTAMP";
@@ -69,8 +220,7 @@ export function buildCreateTableSql(
         })
         .join(",\n    ");
 
-    const safeTableName = tableName.replace(/"/g, '""');
-    return `CREATE TABLE "${safeTableName}" (\n    ${defs}\n);`;
+    return `CREATE TABLE ${quoteIdent(tableName)} (\n    ${defs}\n);`;
 }
 
 /**
@@ -103,11 +253,11 @@ export function parseMarkdownTableRow(row: string): string[] {
  * handling SQL escaping and Primary Key collisions.
  */
 export function generateImportSql(tableName: string, headers: string[], addPrimaryKey: boolean) {
-    const safeTableName = `"${tableName.replace(/"/g, '""')}"`;
-    const safeHeaders = headers.map((h) => `"${h.replace(/"/g, '""')}" TEXT`);
+    const safeTableName = quoteIdent(tableName);
+    const safeHeaders = headers.map((h) => `${quoteIdent(h)} TEXT`);
 
     // Explicitly name the columns being inserted so the auto-increment ID is safely skipped
-    const insertCols = headers.map((h) => `"${h.replace(/"/g, '""')}"`).join(", ");
+    const insertCols = headers.map((h) => quoteIdent(h)).join(", ");
     const placeholders = headers.map(() => "?").join(", ");
 
     if (addPrimaryKey) {
@@ -153,7 +303,7 @@ export function buildPaginatedQuery(
     let wrapper = `SELECT * FROM (${query})`;
 
     if (sortCol && sortDir) {
-        wrapper += ` ORDER BY "${sortCol.replace(/"/g, '""')}" ${sortDir}`;
+        wrapper += ` ORDER BY ${quoteIdent(sortCol)} ${sortDir}`;
     }
 
     if (limit !== undefined && limit > 0) {
@@ -280,23 +430,24 @@ export function generateCascadeQueries(
 
     // 1. Base Query
     if (action === "RENAME" && newName) {
-        queries += `ALTER TABLE "${tableName}" RENAME TO "${newName}";\n`;
+        queries += `ALTER TABLE ${quoteIdent(tableName)} RENAME TO ${quoteIdent(newName)};\n`;
     } else if (action === "DROP") {
-        queries += `DROP TABLE "${tableName}";\n`;
+        queries += `DROP TABLE ${quoteIdent(tableName)};\n`;
     }
 
     // 2. Cascade through dependent Views
+    const escapedName = escapeRegex(tableName);
     views.forEach((view) => {
-        const fromRegex = new RegExp(`(FROM|JOIN)\\s+["'\`\\[]?${tableName}["'\`\\]]?`, "gi");
-        const prefixRegex = new RegExp(`\\b${tableName}\\.`, "gi");
+        const fromRegex = new RegExp(`(FROM|JOIN)\\s+["'\`\\[]?${escapedName}["'\`\\]]?`, "gi");
+        const prefixRegex = new RegExp(`\\b${escapedName}\\.`, "gi");
 
         if (fromRegex.test(view.sql) || prefixRegex.test(view.sql)) {
             if (action === "RENAME" && newName) {
-                let updatedSql = view.sql.replace(fromRegex, `$1 "${newName}"`);
-                updatedSql = updatedSql.replace(prefixRegex, `"${newName}".`);
-                queries += `DROP VIEW "${view.name}";\n${updatedSql};\n`;
+                let updatedSql = view.sql.replace(fromRegex, `$1 ${quoteIdent(newName)}`);
+                updatedSql = updatedSql.replace(prefixRegex, `${quoteIdent(newName)}.`);
+                queries += `DROP VIEW ${quoteIdent(view.name)};\n${updatedSql};\n`;
             } else if (action === "DROP") {
-                queries += `DROP VIEW "${view.name}";\n`;
+                queries += `DROP VIEW ${quoteIdent(view.name)};\n`;
             }
         }
     });
@@ -331,7 +482,7 @@ export function buildInlineInsertQuery(
     // User provided explicit form data
     if (formData && Object.keys(formData).length > 0) {
         for (const [key, val] of Object.entries(formData)) {
-            cols.push(`"${key}"`);
+            cols.push(quoteIdent(key));
             vals.push(val);
             placeholders.push("?");
         }
@@ -346,7 +497,7 @@ export function buildInlineInsertQuery(
 
             if (isPk || defaultVal !== null) return; // SQLite engine handles auto-increments and defaults automatically
 
-            cols.push(`"${colName}"`);
+            cols.push(quoteIdent(colName));
             placeholders.push("?");
 
             if (type.includes("INT") || type.includes("NUM") || type.includes("REAL")) vals.push(0);
@@ -354,7 +505,7 @@ export function buildInlineInsertQuery(
         });
     }
 
-    let query = `INSERT INTO "${tableName}"`;
+    let query = `INSERT INTO ${quoteIdent(tableName)}`;
     if (cols.length > 0) {
         query += ` (${cols.join(", ")}) VALUES (${placeholders.join(", ")})`;
     } else {
@@ -387,7 +538,7 @@ export function determineCellRenderMode(
         const normalizedCol = colName.trim().toLowerCase();
         const normalizedPk = pkColumnName.trim().toLowerCase();
         if (normalizedCol !== normalizedPk) {
-            return { displayValue, mode: "editable" };
+            return { displayValue: formatCellForEdit(val), mode: "editable" };
         }
         return { displayValue, mode: "readonly" };
     }
@@ -539,11 +690,11 @@ export function applyFiltersToQuery(
     const query = baseQuery.trim().replace(/;$/, "");
     if (!query.toUpperCase().startsWith("SELECT")) return baseQuery;
 
-    let whereClauses: string[] = [];
+    const whereClauses: string[] = [];
 
     for (const [col, filter] of Object.entries(filters)) {
-        const safeCol = `"${col.replace(/"/g, '""')}"`;
-        let conditions: string[] = [];
+        const safeCol = quoteIdent(col);
+        const conditions: string[] = [];
 
         if (filter.condition) {
             const cond = filter.condition.trim();
@@ -552,20 +703,20 @@ export function applyFiltersToQuery(
 
             if (numCondMatch) {
                 const op = numCondMatch[1];
-                const val = numCondMatch[2].replace(/'/g, "''");
-                if (!isNaN(Number(val)) && val !== "") {
+                const val = numCondMatch[2];
+                if (!isNaN(Number(val)) && val.trim() !== "") {
                     conditions.push(`CAST(${safeCol} AS NUMERIC) ${op} ${Number(val)}`);
                 } else {
-                    conditions.push(`${safeCol} ${op} '${val}'`);
+                    conditions.push(`${safeCol} ${op} ${quoteLiteral(val)}`);
                 }
             } else {
                 // Fallback to text fuzzy matching
-                conditions.push(`LOWER(CAST(${safeCol} AS TEXT)) LIKE LOWER('%${cond.replace(/'/g, "''")}%')`);
+                conditions.push(`LOWER(CAST(${safeCol} AS TEXT)) LIKE LOWER(${quoteLiteral(`%${cond}%`)})`);
             }
         }
 
         if (filter.values && filter.values.length > 0) {
-            const inVals = filter.values.map((v) => `'${v.replace(/'/g, "''")}'`).join(", ");
+            const inVals = filter.values.map((v) => quoteLiteral(v)).join(", ");
             conditions.push(`CAST(${safeCol} AS TEXT) IN (${inVals})`);
         }
 

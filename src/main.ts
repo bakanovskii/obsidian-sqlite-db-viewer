@@ -2,6 +2,7 @@ import {
     Plugin,
     WorkspaceLeaf,
     TFile,
+    TAbstractFile,
     Notice,
     MarkdownPostProcessorContext,
     Editor,
@@ -22,6 +23,7 @@ import {
 import { CreateDatabaseModal, ImportTableModal } from "./modals";
 import { Prec } from "@codemirror/state";
 import { SqliteResultRenderer, buildDbWindowUI } from "./renderer";
+import { DbManager } from "./db-manager";
 import { sqliteExtension } from "./editor-extension";
 import {
     parseMarkdownTableRow,
@@ -30,7 +32,7 @@ import {
     getWrapperThemeClass,
     extractTableNameFromQuery,
 } from "./formatters";
-import { getSql, preventEventPropagation } from "./utils";
+import { getSql, preventEventPropagation, toArrayBuffer } from "./utils";
 
 declare const activeDocument: Document;
 
@@ -42,9 +44,18 @@ const SELECTORS = {
 
 export default class ObsidianSqlitePlugin extends Plugin {
     declare settings: SqlitePluginSettings;
+    /** One shared sql.js connection per database file, for the whole plugin. */
+    declare dbManager: DbManager;
 
     async onload() {
         await this.loadSettings();
+
+        this.dbManager = new DbManager(this.app, () => ({
+            enabled: this.settings.safetyBackups,
+            folder: this.settings.backupFolder,
+        }));
+        this.registerDatabaseFileEvents();
+
         this.addSettingTab(new SqliteSettingTab(this.app, this));
 
         this.registerView(VIEW_TYPE_SQLITE, (leaf: WorkspaceLeaf) => new SqliteView(leaf, this));
@@ -73,6 +84,36 @@ export default class ObsidianSqlitePlugin extends Plugin {
 
         this.registerEditorExtension(Prec.highest(sqliteExtension(this)));
         this.registerMarkdownPostProcessors();
+    }
+
+    onunload() {
+        this.dbManager.dispose();
+    }
+
+    /**
+     * Keeps the shared connections in step with the vault, so a database changed by
+     * Sync, another device or an external editor is picked up instead of being
+     * overwritten by what we still hold in memory.
+     */
+    private registerDatabaseFileEvents() {
+        const isDatabase = (file: TAbstractFile): file is TFile =>
+            file instanceof TFile && SQLITE_EXTENSIONS.includes(file.extension);
+
+        this.registerEvent(
+            this.app.vault.on("modify", (file) => {
+                if (isDatabase(file)) this.dbManager.handleModify(file);
+            })
+        );
+        this.registerEvent(
+            this.app.vault.on("rename", (file, oldPath) => {
+                if (isDatabase(file)) this.dbManager.handleRename(file, oldPath);
+            })
+        );
+        this.registerEvent(
+            this.app.vault.on("delete", (file) => {
+                if (isDatabase(file)) this.dbManager.handleDelete(file.path);
+            })
+        );
     }
 
     private registerMarkdownPostProcessors() {
@@ -183,8 +224,9 @@ export default class ObsidianSqlitePlugin extends Plugin {
         try {
             const SQL = await getSql();
             const db = new SQL.Database();
-            const buffer = db.export().buffer;
-            const file = await this.app.vault.createBinary(fullPath, buffer as ArrayBuffer);
+            const buffer = toArrayBuffer(db.export());
+            db.close();
+            const file = await this.app.vault.createBinary(fullPath, buffer);
 
             new Notice(`Database ${fullPath} created successfully!`);
 
