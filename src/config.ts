@@ -100,10 +100,10 @@ export class SqliteSettingTab extends PluginSettingTab {
             {
                 name: "Backup folder",
                 desc:
-                    "Where backups are written. Leave empty to keep them next to the database. Inside a chosen " +
-                    "folder the database's own folder structure is mirrored, so files with the same name never collide.",
+                    "Where backups are written when safety backups are on. Leave empty to keep them next to the " +
+                    "database. Inside a chosen folder the database's own folder structure is mirrored, so files " +
+                    "with the same name never collide.",
                 aliases: ["backup location"],
-                visible: () => this.plugin.settings.safetyBackups,
                 control: {
                     type: "folder",
                     key: "backupFolder",
@@ -141,9 +141,6 @@ export class SqliteSettingTab extends PluginSettingTab {
         if (key === "renderMarkdownInCells" || key === "tableStyle") {
             this.app.workspace.updateOptions();
         }
-        // Re-evaluate the backup folder row's `visible`. update() only exists on 1.13+;
-        // the legacy display() path redraws itself instead.
-        if (key === "safetyBackups" && typeof this.update === "function") this.update();
     }
 
     /**
@@ -165,10 +162,7 @@ export class SqliteSettingTab extends PluginSettingTab {
             if (typeof definition.desc === "string") setting.setDesc(definition.desc);
 
             const commit = (value: unknown) => {
-                void this.setControlValue(control.key, value).then(() => {
-                    // `visible` is resolved at render time, so redraw the whole tab
-                    if (control.key === "safetyBackups") this.display();
-                });
+                void this.setControlValue(control.key, value);
             };
 
             switch (control.type) {
