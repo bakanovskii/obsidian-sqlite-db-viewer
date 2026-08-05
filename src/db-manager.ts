@@ -44,7 +44,7 @@ interface DbEntry {
     /** A rotating backup is taken once per entry lifetime, before the first write. */
     backupTaken: boolean;
     /** Pending idle shutdown, cancelled as soon as somebody checks the entry out again. */
-    closeTimer: ReturnType<typeof setTimeout> | null;
+    closeTimer: number | null;
     listeners: Set<DbChangeListener>;
 }
 
@@ -161,6 +161,11 @@ export class DbManager {
             await this.writeBackup(file, backups.folder);
         }
 
+        // Claim the write window *before* the file is touched: Obsidian reports the
+        // modification while `modifyBinary` is still in flight, and a write taken for a
+        // foreign one reloads the database and throws every open table back to page one
+        entry.selfWriteUntil = Date.now() + SELF_WRITE_GRACE_MS;
+
         await this.app.vault.modifyBinary(file, toArrayBuffer(entry.db.export()));
 
         entry.knownMtime = Math.max(entry.knownMtime, file.stat.mtime);
@@ -247,9 +252,9 @@ export class DbManager {
     private scheduleClose(entry: DbEntry) {
         this.cancelClose(entry);
 
-        // Deliberately not window.setTimeout: connections outlive any single window,
-        // and a popout closing must not strand a database that is still open
-        entry.closeTimer = globalThis.setTimeout(() => {
+        // The main window, not activeWindow: connections outlive any popout, and a
+        // popout closing must not strand a database that is still open
+        entry.closeTimer = window.setTimeout(() => {
             entry.closeTimer = null;
 
             // Flush anything still queued before dropping the connection
@@ -266,7 +271,7 @@ export class DbManager {
 
     private cancelClose(entry: DbEntry) {
         if (entry.closeTimer === null) return;
-        globalThis.clearTimeout(entry.closeTimer);
+        window.clearTimeout(entry.closeTimer);
         entry.closeTimer = null;
     }
 
@@ -287,6 +292,9 @@ export class DbManager {
         this.entries.clear();
         this.loading.clear();
         entries.forEach((entry) => {
+            // Nothing may outlive the plugin, so idle shutdowns go now rather than
+            // whenever the queued writes happen to finish draining
+            this.cancelClose(entry);
             entry.listeners.clear();
             void entry.writeChain.catch(() => undefined).then(() => this.closeEntry(entry));
         });

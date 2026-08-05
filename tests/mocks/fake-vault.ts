@@ -10,6 +10,13 @@ export class FakeVault {
     files = new Map<string, Uint8Array>();
     writeCount = 0;
 
+    /**
+     * Called while a write is still in flight. Obsidian echoes its own "modify" event
+     * back at that point, which is exactly when a write is easiest to mistake for a
+     * foreign one.
+     */
+    onModify: ((file: TFile) => void) | null = null;
+
     private clock = 1000;
 
     adapter = {
@@ -50,6 +57,7 @@ export class FakeVault {
         this.files.set(file.path, new Uint8Array(buffer));
         file.stat.mtime = ++this.clock;
         file.stat.size = buffer.byteLength;
+        this.onModify?.(file);
     }
 
     /** Simulates Obsidian Sync or an external tool rewriting the file. */

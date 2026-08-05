@@ -138,6 +138,26 @@ describe("DbManager", () => {
         reader.release();
     });
 
+    test("does not mistake its own write for a foreign one when the event echoes back early", async () => {
+        const { vault, file, manager } = setup();
+
+        const writer = await manager.acquire(file);
+        const reader = await manager.acquire(file);
+        const seen: string[] = [];
+        reader.onChange((reason) => seen.push(reason));
+
+        // Obsidian reports the modification while modifyBinary is still in flight
+        vault.onModify = (f) => manager.handleModify(f as unknown as TFile);
+
+        writer.db!.exec(`INSERT INTO log ("note") VALUES ('x');`);
+        await writer.save();
+        await tick();
+
+        // An "external" here throws every table back to its first page for nothing
+        expect(seen).toEqual(["write"]);
+        expect(readNotes(vault, file)).toEqual(["seed", "x"]);
+    });
+
     test("refuses to overwrite a file changed on disk, and reloads instead", async () => {
         const { vault, file, manager } = setup();
 
