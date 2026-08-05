@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.7.1 (05 Aug 2026)
+
+### Improvements
+
+- Keep an unused database connection open for 30 seconds instead of dropping it the moment
+  the last table lets go. Live preview rebuilds embedded tables constantly, and every rebuild
+  re-read and re-parsed the whole database file — and counted as a new session, burning one
+  of the three rotating backup slots each time
+
+### Bugfixes
+
+- Fix an embedded table going dead after a while: paging through it showed nothing, and
+  "Refresh" hung on "Executing query" forever. Obsidian unloads a rendered block when it
+  scrolls out of view and loads it again when it comes back, reusing the table already on
+  screen — the renderer handed its database connection back on the first unload and never
+  checked out a new one
+- Fix an embed whose renderer was pruned staying on screen with nothing behind it. The
+  attributes marking an embed as processed survive on the DOM nodes CodeMirror recycles, so
+  a table is now only considered live when a renderer is actually registered for it
+- Fix a connection being closed between the moment a table asks for it and the moment it
+  checks it out, handing the table a database that was already gone
+- Fix every edit throwing all open tables back to their first page: Obsidian reports the
+  modification while the plugin's own write is still in flight, so a write was taken for a
+  foreign change and reloaded the database from disk
+- Keep the current page when a database changes elsewhere, instead of jumping to page one.
+  The page is clamped to what is left, so editing a table on page 12 no longer restarts at
+  the top on every change
+- Fix a cell edit, row insert or row delete reporting success when there was no connection
+  to write to
+- Fix editing an empty cell leaving the invisible placeholder character in front of the new
+  value, shifting the text and the column sideways. The placeholder is now dropped the moment
+  the cell is focused, and what stays on screen after an edit is exactly what was stored
+- Paste into a cell as plain text, so copying from a note or a browser cannot drop styled
+  markup into the table
+
 ## 0.7.0 (05 Aug 2026)
 
 ### Features

@@ -510,6 +510,10 @@
     outline: none;
     cursor: text;
 }
+/* An emptied cell must not collapse to nothing, or there is no caret to aim at */
+.sqlite-editable-cell:empty {
+    min-width: 2em;
+}
 .sqlite-editable-cell:focus {
     background-color: var(--background-modifier-hover);
 }

@@ -153,12 +153,17 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         return handle.db;
     }
 
-    /** Somebody else changed this database: drop cached results and show the current data. */
-    private onDatabaseChanged(reason: DbChangeReason) {
+    /**
+     * Somebody else changed this database: drop cached results and show the current data.
+     *
+     * The page is deliberately kept. Rows may well have gone, but `calculatePagination`
+     * clamps whatever is left, and jumping back to page one on every change makes a
+     * table you are editing impossible to work with.
+     */
+    private onDatabaseChanged(_reason: DbChangeReason) {
         if (this.isUnloaded || !this.tableEl) return;
         this.lastDbResult = null;
         this.columnsInfo = [];
-        if (reason === "external") this.tableState.page = 0;
         void this.loadDataAndRender();
     }
 
@@ -396,12 +401,49 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                         // edit cannot re-submit a value that was already written
                         let committedText = displayValue;
 
-                        td.onfocus = () => td.setCssStyles({ backgroundColor: "var(--background-modifier-hover)" });
+                        td.onfocus = () => {
+                            td.setCssStyles({ backgroundColor: "var(--background-modifier-hover)" });
+
+                            // Drop the placeholder before anything is typed or pasted. It is
+                            // invisible but not weightless: left sitting in front of the new
+                            // value it nudges the text, and the column, sideways
+                            if (td.textContent === "\u200B") td.textContent = "";
+                        };
+                        td.onpaste = (e) => {
+                            // A cell holds text. Pasting from a note or a browser would
+                            // otherwise drop styled markup into the table
+                            e.preventDefault();
+                            const text = (e.clipboardData?.getData("text/plain") ?? "").replace(/\u200B/g, "");
+                            if (!text) return;
+
+                            const selection = activeWindow.getSelection();
+                            const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+                            if (!range || !td.contains(range.commonAncestorContainer)) {
+                                td.textContent = (td.textContent || "") + text;
+                                return;
+                            }
+
+                            range.deleteContents();
+                            const inserted = activeDocument.createTextNode(text);
+                            range.insertNode(inserted);
+
+                            // Leave the caret after what was just pasted
+                            range.setStartAfter(inserted);
+                            range.collapse(true);
+                            selection!.removeAllRanges();
+                            selection!.addRange(range);
+                        };
                         td.onblur = () => {
                             td.setCssStyles({ backgroundColor: "transparent" });
 
                             // Remove zero-width space before saving and replacing
                             const newText = (td.textContent || "").replace(/\u200B/g, "");
+
+                            // What stays on screen has to be exactly what was stored: the cell
+                            // is not re-rendered after a successful edit
+                            const display = newText === "" ? "\u200B" : newText;
+                            if (td.textContent !== display) td.textContent = display;
+
                             if (newText === committedText) return;
 
                             committedText = newText;
