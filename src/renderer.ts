@@ -44,6 +44,14 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
      */
     private handle: DbHandle | null = null;
     private isUnloaded: boolean = false;
+    /**
+     * Bumped on every unload. An acquire still in flight from a previous life
+     * compares it and gives its connection straight back instead of overwriting
+     * the one this renderer is using now.
+     */
+    private generation: number = 0;
+    /** In-flight check-out, so a burst of calls shares one connection instead of racing. */
+    private acquiring: Promise<Database | null> | null = null;
 
     get activeDb(): Database | null {
         return this.handle ? this.handle.db : null;
@@ -73,31 +81,76 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     onload() {
+        // Obsidian reuses a rendered block: the same render child is unloaded when it
+        // scrolls out of the viewport and loaded again when it comes back, so a load
+        // is not necessarily the first one
+        this.isUnloaded = false;
+        this.lastDbResult = null;
+        this.columnsInfo = [];
         void this.initializeDbAndRender();
     }
 
     async initializeDbAndRender() {
         try {
-            const handle = await this.plugin.dbManager.acquire(this.file);
+            const db = await this.ensureDb();
+            if (this.isUnloaded) return;
 
-            // The component may have been unloaded while the file was being read
-            if (this.isUnloaded) {
-                handle.release();
+            this.containerEl.empty();
+            this.toolbarEl = this.containerEl.createDiv();
+            this.tableEl = this.containerEl.createDiv();
+
+            if (!db) {
+                this.tableEl.createSpan({ text: "[DB connection unavailable]", cls: "sqlite-error" });
                 return;
             }
-
-            this.handle = handle;
-            handle.onChange((reason) => this.onDatabaseChanged(reason));
         } catch (e) {
             this.containerEl.empty();
             this.containerEl.createSpan({ text: `[DB load error: ${String(e)}]`, cls: "sqlite-error" });
             return;
         }
 
-        this.containerEl.empty();
-        this.toolbarEl = this.containerEl.createDiv();
-        this.tableEl = this.containerEl.createDiv();
         await this.loadDataAndRender();
+    }
+
+    /**
+     * Returns a usable connection, checking out a new one when the handle we hold has
+     * gone dead — this renderer was unloaded and loaded again, or the shared connection
+     * was dropped after every other consumer let go of it. Without this a reused block
+     * keeps its buttons and its table on screen while silently having no database
+     * behind it: paging shows nothing and a refresh never finishes.
+     */
+    private async ensureDb(): Promise<Database | null> {
+        if (this.isUnloaded) return null;
+
+        const db = this.activeDb;
+        if (db) return db;
+
+        if (!this.acquiring) {
+            this.acquiring = this.acquireHandle().finally(() => {
+                this.acquiring = null;
+            });
+        }
+        return this.acquiring;
+    }
+
+    private async acquireHandle(): Promise<Database | null> {
+        const generation = this.generation;
+
+        const stale = this.handle;
+        this.handle = null;
+        if (stale) stale.release();
+
+        const handle = await this.plugin.dbManager.acquire(this.file);
+
+        // Unloaded — or unloaded and loaded again — while the file was being read
+        if (this.isUnloaded || generation !== this.generation) {
+            handle.release();
+            return null;
+        }
+
+        this.handle = handle;
+        handle.onChange((reason) => this.onDatabaseChanged(reason));
+        return handle.db;
     }
 
     /** Somebody else changed this database: drop cached results and show the current data. */
@@ -111,6 +164,8 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
 
     onunload() {
         this.isUnloaded = true;
+        this.generation++;
+        this.acquiring = null;
         if (this.handle) {
             this.handle.release();
             this.handle = null;
@@ -127,6 +182,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     async refresh() {
+        await this.ensureDb();
         if (this.handle) await this.handle.reload();
         this.lastDbResult = null;
         this.columnsInfo = [];
@@ -138,8 +194,8 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     private async executeWrite(query: string, params: SqlValue[]) {
-        const db = this.activeDb;
-        if (!db || !this.handle) return;
+        const db = await this.ensureDb();
+        if (!db || !this.handle) throw new Error("No database connection");
 
         const stmt = db.prepare(query);
         try {
@@ -162,6 +218,9 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     async loadDataAndRender() {
+        // The block may not have been built yet, or may have been torn down
+        if (!this.tableEl || this.isUnloaded) return;
+
         if (!this.lastDbResult) {
             this.toolbarEl.empty();
             this.tableEl.empty();
@@ -170,8 +229,15 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         }
 
         try {
-            const db = this.activeDb;
-            if (!db) return;
+            const db = await this.ensureDb();
+            if (this.isUnloaded) return;
+
+            // Never leave the spinner up: a dead connection has to be visible
+            if (!db) {
+                this.tableEl.empty();
+                this.tableEl.createSpan({ text: "[DB connection lost — reopen the note]", cls: "sqlite-error" });
+                return;
+            }
 
             if (this.tableName === null && !this.forceRaw) {
                 this.tableName = extractTableNameFromQuery(this.query);
@@ -276,11 +342,18 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             this.plugin.settings.tableStyle,
             // THE SERVER-SIDE FETCH HOOK: Only pulls exactly what is needed for this page!
             async (limit, offset, sortCol, sortDir) => {
-                if (!this.activeDb) return [];
+                // Paging is the most common way to touch a block that has been sitting
+                // around for a while, so this is where a dead handle usually surfaces
+                const db = await this.ensureDb();
+                if (!db) {
+                    new Notice("Lost the database connection. Refresh the table.");
+                    return [];
+                }
+
                 const filteredQuery = applyFiltersToQuery(this.query, this.tableState.filters);
                 const paginatedQuery = buildPaginatedQuery(filteredQuery, sortCol, sortDir, limit, offset);
                 try {
-                    const res = this.activeDb.exec(paginatedQuery);
+                    const res = db.exec(paginatedQuery);
                     return res.length > 0 ? res[0].values : [];
                 } catch (e) {
                     new Notice(`Query error: ${String(e)}`);
@@ -613,10 +686,15 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
     }
 
     async copyToClipboard() {
-        if (!this.activeDb) return;
         try {
+            const db = await this.ensureDb();
+            if (!db) {
+                new Notice("No database connection.");
+                return;
+            }
+
             const activeQuery = applyFiltersToQuery(this.query, this.tableState.filters);
-            const res = this.activeDb.exec(activeQuery);
+            const res = db.exec(activeQuery);
 
             if (res.length > 0) {
                 const cols = res[0].columns;

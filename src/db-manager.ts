@@ -7,6 +7,15 @@ import { buildBackupPath, isBackupPath } from "./formatters";
 const BACKUP_SLOTS = 3;
 
 /**
+ * How long a connection is kept after its last consumer let go.
+ *
+ * Live preview unloads and rebuilds embeds constantly — every scroll, every edit —
+ * so without a grace period each of those would re-read and re-parse the whole
+ * database file, and start a fresh "session" that burns a rotating backup slot.
+ */
+const IDLE_CLOSE_MS = 30_000;
+
+/**
  * Obsidian may update `TFile.stat` slightly after `modifyBinary` resolves, so a
  * "modify" event arriving right after our own write can look like a foreign one.
  */
@@ -34,6 +43,8 @@ interface DbEntry {
     selfWriteUntil: number;
     /** A rotating backup is taken once per entry lifetime, before the first write. */
     backupTaken: boolean;
+    /** Pending idle shutdown, cancelled as soon as somebody checks the entry out again. */
+    closeTimer: ReturnType<typeof setTimeout> | null;
     listeners: Set<DbChangeListener>;
 }
 
@@ -59,14 +70,24 @@ export class DbManager {
 
     constructor(
         private app: App,
-        private backupConfig: () => BackupConfig
+        private backupConfig: () => BackupConfig,
+        private idleCloseMs: number = IDLE_CLOSE_MS
     ) {}
 
     /** Checks out the shared connection for `file`. Every handle must be released. */
     async acquire(file: TFile): Promise<DbHandle> {
-        const entry = await this.getEntry(file);
-        entry.refCount++;
-        return new DbHandle(this, file, entry);
+        // Reading the file is asynchronous, so the entry we waited for may have been
+        // dropped in the meantime. Nothing may await between the check below and the
+        // check-in, or the connection could be closed out from under this handle.
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const entry = await this.getEntry(file);
+            if (entry.closed || this.entries.get(entry.path) !== entry) continue;
+
+            this.cancelClose(entry);
+            entry.refCount++;
+            return new DbHandle(this, file, entry);
+        }
+        throw new Error(`Could not check out a connection for "${file.path}"`);
     }
 
     private async getEntry(file: TFile): Promise<DbEntry> {
@@ -93,6 +114,7 @@ export class DbManager {
             writeChain: Promise.resolve(),
             selfWriteUntil: 0,
             backupTaken: false,
+            closeTimer: null,
             listeners: new Set(),
         };
         this.entries.set(file.path, entry);
@@ -218,19 +240,39 @@ export class DbManager {
         if (listener) entry.listeners.delete(listener);
         entry.refCount--;
         if (entry.refCount > 0) return;
+        this.scheduleClose(entry);
+    }
 
-        // Flush anything still queued before dropping the connection
-        void entry.writeChain
-            .catch(() => undefined)
-            .then(() => {
-                if (entry.refCount > 0 || entry.closed) return;
-                if (this.entries.get(entry.path) === entry) this.entries.delete(entry.path);
-                this.closeEntry(entry);
-            });
+    /** Drops an unused connection, but only after it has stayed unused for a while. */
+    private scheduleClose(entry: DbEntry) {
+        this.cancelClose(entry);
+
+        // Deliberately not window.setTimeout: connections outlive any single window,
+        // and a popout closing must not strand a database that is still open
+        entry.closeTimer = globalThis.setTimeout(() => {
+            entry.closeTimer = null;
+
+            // Flush anything still queued before dropping the connection
+            void entry.writeChain
+                .catch(() => undefined)
+                .then(() => {
+                    // Somebody checked the entry out again while the queue drained
+                    if (entry.refCount > 0 || entry.closed || entry.closeTimer) return;
+                    if (this.entries.get(entry.path) === entry) this.entries.delete(entry.path);
+                    this.closeEntry(entry);
+                });
+        }, this.idleCloseMs);
+    }
+
+    private cancelClose(entry: DbEntry) {
+        if (entry.closeTimer === null) return;
+        globalThis.clearTimeout(entry.closeTimer);
+        entry.closeTimer = null;
     }
 
     private closeEntry(entry: DbEntry) {
         if (entry.closed) return;
+        this.cancelClose(entry);
         entry.closed = true;
         try {
             entry.db.close();

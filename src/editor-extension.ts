@@ -89,17 +89,19 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                     const hasDbExt = SQLITE_EXTENSIONS.some((ext) => src.endsWith("." + ext));
                     if (!hasDbExt || !alt.toUpperCase().includes("SELECT")) return;
 
+                    // CodeMirror recycles DOM: an embed we already processed can come back
+                    // after its renderer was pruned, still carrying our attributes. Only a
+                    // registered renderer proves the table on screen is actually alive —
+                    // otherwise it is rebuilt below, instead of being left dead but visible.
+                    const live = this.activeRenderers.get(embed);
                     const lastQuery = embed.getAttribute(DOM_ATTRIBUTES.QUERY);
-                    if (embed.hasAttribute(DOM_ATTRIBUTES.PROCESSED)) {
+                    if (embed.hasAttribute(DOM_ATTRIBUTES.PROCESSED) && live) {
                         if (lastQuery === alt) return;
 
                         // SOFT UPDATE: If the user just typed a new query, don't destroy the whole UI!
-                        if (this.activeRenderers.has(embed)) {
-                            const renderer = this.activeRenderers.get(embed)!;
-                            embed.setAttribute(DOM_ATTRIBUTES.QUERY, alt);
-                            void renderer.updateQuery(alt);
-                            return;
-                        }
+                        embed.setAttribute(DOM_ATTRIBUTES.QUERY, alt);
+                        void live.updateQuery(alt);
+                        return;
                     }
                     embed.setAttribute(DOM_ATTRIBUTES.PROCESSED, "true");
                     embed.setAttribute(DOM_ATTRIBUTES.QUERY, alt);

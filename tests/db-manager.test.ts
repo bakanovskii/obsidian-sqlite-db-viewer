@@ -40,14 +40,17 @@ function readNotes(vault: FakeVault, file: TFile): string[] {
     return notes;
 }
 
-function setup(backups = false, backupFolder = "") {
+/** `idleCloseMs` defaults to 0 here: most tests want a released connection gone at once. */
+function setup(backups = false, backupFolder = "", idleCloseMs = 0) {
     const vault = new FakeVault();
     // The fake file only implements the fields DbManager reads
     const file = vault.create("dbs/stats.db", seedDatabase()) as unknown as TFile;
     const app = { vault } as unknown as App;
-    const manager = new DbManager(app, () => ({ enabled: backups, folder: backupFolder }));
+    const manager = new DbManager(app, () => ({ enabled: backups, folder: backupFolder }), idleCloseMs);
     return { vault, file, manager };
 }
+
+const tick = (ms = 0) => new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 
 describe("DbManager", () => {
     test("hands the same connection to every consumer of a file", async () => {
@@ -217,7 +220,7 @@ describe("DbManager", () => {
         // A backup carries the database extension, so it can be opened and edited too
         const backup = vault.create("dbs/stats.backup-1.db", seedDatabase()) as unknown as TFile;
         const app = { vault } as unknown as App;
-        const manager = new DbManager(app, () => ({ enabled: true, folder: "" }));
+        const manager = new DbManager(app, () => ({ enabled: true, folder: "" }), 0);
 
         const handle = await manager.acquire(backup);
         handle.db!.exec(`INSERT INTO log ("note") VALUES ('edited');`);
@@ -232,7 +235,7 @@ describe("DbManager", () => {
         const vault = new FakeVault();
         const file = vault.create("dbs/stats.db", seedDatabase()) as unknown as TFile;
         const app = { vault } as unknown as App;
-        const manager = new DbManager(app, () => ({ enabled: true, folder: "" }));
+        const manager = new DbManager(app, () => ({ enabled: true, folder: "" }), 0);
 
         for (const note of ["first", "second", "third"]) {
             // Each open/close cycle is one session, and takes one backup
@@ -240,7 +243,7 @@ describe("DbManager", () => {
             handle.db!.exec(`INSERT INTO log ("note") VALUES ('${note}');`);
             await handle.save();
             handle.release();
-            await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+            await tick();
         }
 
         const slots = Array.from(vault.files.keys())
@@ -276,6 +279,59 @@ describe("DbManager", () => {
         expect(b.db).toBeNull();
     });
 
+    test("checking out again right after the last release yields a live connection", async () => {
+        const { file, manager } = setup();
+
+        // Live preview rebuilds an embed in one pass: the old renderer lets go and the
+        // new one checks out again before the connection has finished shutting down
+        const old = await manager.acquire(file);
+        old.release();
+        const fresh = await manager.acquire(file);
+
+        expect(fresh.db).not.toBeNull();
+
+        // The shutdown that was already scheduled must not close it underneath us
+        await tick();
+        expect(fresh.db).not.toBeNull();
+        expect(fresh.db!.exec(`SELECT note FROM log;`)[0].values.length).toBe(1);
+
+        fresh.release();
+    });
+
+    test("keeps an idle connection for a while, so a rebuilt embed reuses it", async () => {
+        const { file, manager } = setup(false, "", 200);
+
+        const first = await manager.acquire(file);
+        const db = first.db;
+        first.release();
+
+        await tick(10);
+        const second = await manager.acquire(file);
+
+        // Same in-memory database: no re-read, and no second "session" burning a backup slot
+        expect(second.db).toBe(db);
+
+        second.release();
+        manager.dispose();
+    });
+
+    test("drops a connection nobody has used for a while, and reopens on demand", async () => {
+        const { file, manager } = setup(false, "", 10);
+
+        const first = await manager.acquire(file);
+        const db = first.db;
+        first.release();
+
+        await tick(40);
+        const second = await manager.acquire(file);
+
+        expect(second.db).not.toBeNull();
+        expect(second.db).not.toBe(db);
+
+        second.release();
+        await tick(40);
+    });
+
     test("adopts an external change reported through the vault", async () => {
         const { vault, file, manager } = setup();
         const handle = await manager.acquire(file);
@@ -289,7 +345,7 @@ describe("DbManager", () => {
         other.close();
 
         manager.handleModify(file);
-        await new Promise((resolve) => globalThis.setTimeout(resolve, 0));
+        await tick();
 
         expect(seen).toEqual(["external"]);
         expect(handle.db!.exec(`SELECT note FROM log ORDER BY id;`)[0].values.map((r) => String(r[0]))).toEqual([
