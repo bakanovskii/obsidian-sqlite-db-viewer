@@ -22,7 +22,7 @@ export class ConfirmModal extends Modal {
         contentEl.createEl("h2", { text: this.title });
         contentEl.createEl("p", { text: this.message });
 
-        const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
+        const foot = contentEl.createDiv({ cls: "sqlite-modal-footer" });
         foot.setCssStyles({ gap: "8px" });
 
         createActionBtn(foot, "x", "Cancel", () => this.close());
@@ -60,11 +60,13 @@ export class RenameTableModal extends Modal {
         contentEl.empty();
         contentEl.createEl("h2", { text: "Rename table" });
 
-        new Setting(contentEl)
-            .setName("New name")
-            .addText((t) => t.setValue(this.newName).onChange((v) => (this.newName = v.trim())));
+        new Setting(contentEl).setName("New name").addText((t) => {
+            t.setValue(this.newName).onChange((v) => {
+                this.newName = v.trim();
+            });
+        });
 
-        const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
+        const foot = contentEl.createDiv({ cls: "sqlite-modal-footer" });
         createActionBtn(foot, "check", "Save", () => {
             if (this.newName && this.newName !== this.oldName) {
                 this.onRename(this.newName);
@@ -101,14 +103,16 @@ export class CreateTableModal extends Modal {
         contentEl.createEl("h2", { text: "Table Constructor" });
 
         new Setting(contentEl).setName("Table name").addText((t) => {
-            t.setValue(this.tableName).onChange((v) => (this.tableName = v));
+            t.setValue(this.tableName).onChange((v) => {
+                this.tableName = v;
+            });
             t.inputEl.classList.add("sqlite-accent-input");
         });
 
-        const titleEl = contentEl.createEl("div", { text: "COLUMNS", cls: "sqlite-schema-title" });
+        const titleEl = contentEl.createDiv({ text: "COLUMNS", cls: "sqlite-schema-title" });
         titleEl.setCssStyles({ marginTop: "25px" });
 
-        const colContainer = contentEl.createEl("div", { cls: "sqlite-col-container" });
+        const colContainer = contentEl.createDiv({ cls: "sqlite-col-container" });
         colContainer.setCssStyles({
             marginTop: "10px",
             paddingTop: "10px",
@@ -116,7 +120,7 @@ export class CreateTableModal extends Modal {
         });
 
         this.columns.forEach((col, index) => {
-            const row = colContainer.createEl("div", { cls: "sqlite-col-row" });
+            const row = colContainer.createDiv({ cls: "sqlite-col-row" });
 
             const nameInput = row.createEl("input", { type: "text", cls: "sqlite-accent-input" });
             nameInput.placeholder = "Column Name";
@@ -165,7 +169,7 @@ export class CreateTableModal extends Modal {
             delBtn.setCssStyles({ padding: "5px 8px" });
         });
 
-        const addBtnContainer = contentEl.createEl("div");
+        const addBtnContainer = contentEl.createDiv();
         addBtnContainer.setCssStyles({ marginTop: "15px" });
         const addBtn = addBtnContainer.createEl("button", { cls: "sqlite-dashed-btn" });
         applyIcon(addBtn, "plus");
@@ -174,7 +178,7 @@ export class CreateTableModal extends Modal {
             this.renderUI();
         };
 
-        const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
+        const foot = contentEl.createDiv({ cls: "sqlite-modal-footer" });
 
         createActionBtn(foot, "check", "Create Table", () => {
             const sql = buildCreateTableSql(this.tableName, this.columns);
@@ -207,7 +211,11 @@ export class CreateDatabaseModal extends Modal {
         new Setting(contentEl)
             .setName("File name")
             .setDesc("By default uses .db extension")
-            .addText((text) => text.setValue(this.fileName).onChange((val) => (this.fileName = val)));
+            .addText((text) => {
+                text.setValue(this.fileName).onChange((val) => {
+                    this.fileName = val;
+                });
+            });
 
         const folders = this.app.vault.getAllLoadedFiles().filter((f) => f instanceof TFolder);
 
@@ -220,10 +228,12 @@ export class CreateDatabaseModal extends Modal {
                     if (f.path !== "/") drop.addOption(f.path, f.path);
                 });
                 drop.setValue("/");
-                drop.onChange((val) => (this.folderPath = val));
+                drop.onChange((val) => {
+                    this.folderPath = val;
+                });
             });
 
-        const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
+        const foot = contentEl.createDiv({ cls: "sqlite-modal-footer" });
         createActionBtn(foot, "check", "Create", () => {
             this.close();
             void this.plugin.createNewDatabase(this.fileName, this.folderPath);
@@ -267,30 +277,44 @@ export class ImportTableModal extends Modal {
         this.selectedFile = dbFiles[0].path;
 
         new Setting(contentEl).setName("Database").addDropdown((drop) => {
-            dbFiles.forEach((f) => drop.addOption(f.path, f.name));
+            dbFiles.forEach((f) => {
+                drop.addOption(f.path, f.name);
+            });
             drop.setValue(this.selectedFile);
-            drop.onChange((val) => (this.selectedFile = val));
+            drop.onChange((val) => {
+                this.selectedFile = val;
+            });
             drop.selectEl.classList.add("sqlite-accent-input");
         });
 
         new Setting(contentEl).setName("New table name").addText((text) => {
-            text.setValue(this.tableName).onChange((val) => (this.tableName = val));
+            text.setValue(this.tableName).onChange((val) => {
+                this.tableName = val;
+            });
             text.inputEl.classList.add("sqlite-accent-input");
         });
 
         new Setting(contentEl)
             .setName("Keep Markdown")
             .setDesc("Keep links, bold text, and highlights. If disabled, only plain text is saved to the DB.")
-            .addToggle((toggle) => toggle.setValue(this.keepMarkdown).onChange((val) => (this.keepMarkdown = val)));
+            .addToggle((toggle) =>
+                toggle.setValue(this.keepMarkdown).onChange((val) => {
+                    this.keepMarkdown = val;
+                })
+            );
 
         new Setting(contentEl)
             .setName("Add Primary Key")
             .setDesc(
                 "Automatically generate an 'id' column with auto-incrementing numbers (Required for Live Editing)."
             )
-            .addToggle((toggle) => toggle.setValue(this.addPrimaryKey).onChange((val) => (this.addPrimaryKey = val)));
+            .addToggle((toggle) =>
+                toggle.setValue(this.addPrimaryKey).onChange((val) => {
+                    this.addPrimaryKey = val;
+                })
+            );
 
-        const foot = contentEl.createEl("div", { cls: "sqlite-modal-footer" });
+        const foot = contentEl.createDiv({ cls: "sqlite-modal-footer" });
 
         createActionBtn(foot, "database", "Import", () => {
             this.close();

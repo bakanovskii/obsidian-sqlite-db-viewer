@@ -19,6 +19,22 @@
 - Serialize database writes so two saves can never interleave into one file
 - Refuse to save when the file changed on disk since it was read, instead of overwriting it
 
+### Improvements
+
+- Render embedded tables immediately when a note opens, instead of after a fixed 600 ms delay.
+  The delay now applies only to document edits, where it is actually needed to avoid running a
+  half-typed query on every keystroke
+- Render embeds scrolled into view without waiting, and coalesce scroll-driven updates into one
+  pass per frame; scrolling no longer restarts the edit delay either
+- Adopt Obsidian's declarative settings API, so the plugin's settings show up in settings search
+  on 1.13+; the previous renderer is kept as a fallback for older versions and now shares the
+  same definitions instead of duplicating them
+- Use a vault folder suggester for the backup folder on 1.13+, instead of a plain dropdown
+- Use `createDiv()`/`createSpan()` instead of `createEl("div"/"span")` throughout
+- Build table rows through Obsidian's DOM helpers instead of `createElement`, keeping the
+  single-reflow document fragment
+- Drop a redundant `!important` from the reading-view button rule
+
 ### Bugfixes
 
 - Fix rows silently disappearing when a database is open in more than one table at once —
@@ -40,6 +56,8 @@
 - Fix the DB explorer erroring out when its open table was dropped or renamed elsewhere
 - Fix the temporary connection used to create a database never being closed
 - Fix save errors being reported while the UI still showed the change as saved
+- Fix embeds in a split view resolving their database against the focused pane's note rather
+  than their own, by reading the editor's own file instead of the active file
 
 ## 0.6.0 (10 Jun 2026)
 

@@ -90,13 +90,13 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             handle.onChange((reason) => this.onDatabaseChanged(reason));
         } catch (e) {
             this.containerEl.empty();
-            this.containerEl.createEl("span", { text: `[DB load error: ${String(e)}]`, cls: "sqlite-error" });
+            this.containerEl.createSpan({ text: `[DB load error: ${String(e)}]`, cls: "sqlite-error" });
             return;
         }
 
         this.containerEl.empty();
-        this.toolbarEl = this.containerEl.createEl("div");
-        this.tableEl = this.containerEl.createEl("div");
+        this.toolbarEl = this.containerEl.createDiv();
+        this.tableEl = this.containerEl.createDiv();
         await this.loadDataAndRender();
     }
 
@@ -232,7 +232,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             if (totalRows > 0 || this.tableName) {
                 this.toolbarEl.empty();
                 if (this.isEditMode && !this.pkColumn && this.tableName) {
-                    const warn = this.toolbarEl.createEl("div", {
+                    const warn = this.toolbarEl.createDiv({
                         text: "⚠️ Read-only: No Primary Key",
                         cls: "text-warning",
                     });
@@ -247,7 +247,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             }
         } catch (e) {
             this.tableEl.empty();
-            this.tableEl.createEl("span", { text: `[SQL Error: ${String(e)}]`, cls: "sqlite-error" });
+            this.tableEl.createSpan({ text: `[SQL Error: ${String(e)}]`, cls: "sqlite-error" });
         }
     }
 
@@ -429,7 +429,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
                 if (!lastTd) return;
                 lastTd.setCssStyles({ position: "relative" });
 
-                const delBtn = lastTd.createEl("div", { cls: "sqlite-row-action" });
+                const delBtn = lastTd.createDiv({ cls: "sqlite-row-action" });
                 applyIcon(delBtn, "trash");
 
                 delBtn.onclick = (e) => {
@@ -483,11 +483,11 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
         const td = tr.createEl("td");
         td.colSpan = colCount;
 
-        const promptWrapper = td.createEl("div", { cls: "sqlite-ghost-prompt" });
+        const promptWrapper = td.createDiv({ cls: "sqlite-ghost-prompt" });
         applyIcon(promptWrapper.createSpan(), "plus");
         promptWrapper.createSpan({ text: "New row..." });
 
-        const formWrapper = td.createEl("div", { cls: "sqlite-ghost-form" });
+        const formWrapper = td.createDiv({ cls: "sqlite-ghost-form" });
         const inputs: Record<string, HTMLInputElement> = {};
 
         this.columnsInfo.forEach((colMeta) => {
@@ -496,7 +496,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             const hasDefault = colMeta[4] !== null;
             const isAuto = isPk || hasDefault;
 
-            const field = formWrapper.createEl("div", { cls: "sqlite-ghost-field" });
+            const field = formWrapper.createDiv({ cls: "sqlite-ghost-field" });
             field.createEl("label", { text: colName + (isAuto ? " (AUTO)" : "") });
 
             const inp = field.createEl("input", { type: "text" });
@@ -508,7 +508,7 @@ export class SqliteResultRenderer extends MarkdownRenderChild {
             }
         });
 
-        const btnGroup = formWrapper.createEl("div", { cls: "sqlite-ghost-btn-group" });
+        const btnGroup = formWrapper.createDiv({ cls: "sqlite-ghost-btn-group" });
 
         const cancelBtn = btnGroup.createEl("button", { cls: "sqlite-action-btn" });
         cancelBtn.textContent = "Cancel";
@@ -651,16 +651,16 @@ export function buildDbWindowUI(
 ): HTMLElement {
     wrapper.classList.add("sqlite-db-window", "markdown-rendered");
 
-    const header = wrapper.createEl("div", { cls: "sqlite-db-header" });
-    const titleContainer = header.createEl("div", { cls: "sqlite-db-title-container" });
-    const dbIcon = titleContainer.createEl("span", { cls: "sqlite-db-icon" });
+    const header = wrapper.createDiv({ cls: "sqlite-db-header" });
+    const titleContainer = header.createDiv({ cls: "sqlite-db-title-container" });
+    const dbIcon = titleContainer.createSpan({ cls: "sqlite-db-icon" });
     applyIcon(dbIcon, "database");
-    titleContainer.createEl("span", { text: titleText, cls: "sqlite-db-title" });
+    titleContainer.createSpan({ text: titleText, cls: "sqlite-db-title" });
 
-    const btnGroup = header.createEl("div", { cls: "sqlite-db-buttons sqlite-hide-in-reading" });
+    const btnGroup = header.createDiv({ cls: "sqlite-db-buttons sqlite-hide-in-reading" });
 
     if (onToggleEditMode) {
-        const editModeBtn = btnGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        const editModeBtn = btnGroup.createSpan({ cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(editModeBtn, "pencil");
         editModeBtn.title = "Toggle Edit Mode (Live)";
 
@@ -693,7 +693,7 @@ export function buildDbWindowUI(
     }
 
     if (onCopyAsMarkdown) {
-        const copyMdBtn = btnGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        const copyMdBtn = btnGroup.createSpan({ cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(copyMdBtn, "clipboard-copy");
         copyMdBtn.title = "Copy view as Markdown Table";
         copyMdBtn.onclick = (e) => {
@@ -717,27 +717,27 @@ export function buildDbWindowUI(
     }
 
     if (onEdit) {
-        const editBtn = btnGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        const editBtn = btnGroup.createSpan({ cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(editBtn, "code");
         editBtn.title = "Edit code";
         editBtn.onclick = onEdit;
     }
 
     if (onRefresh) {
-        const refreshBtn = btnGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        const refreshBtn = btnGroup.createSpan({ cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(refreshBtn, "refresh-cw");
         refreshBtn.title = "Refresh Table";
         refreshBtn.onclick = onRefresh;
     }
 
     if (onOpenDb) {
-        const openDbBtn = btnGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        const openDbBtn = btnGroup.createSpan({ cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(openDbBtn, "database");
         openDbBtn.title = "Open DB Explorer";
         openDbBtn.onclick = onOpenDb;
     }
 
-    const tableContainer = wrapper.createEl("div");
+    const tableContainer = wrapper.createDiv();
     tableContainer.setCssStyles({
         padding: "10px",
         overflowX: "auto",
@@ -756,10 +756,10 @@ export function buildPaginationUI(
     onLimitChange: (newLimit: number) => void
 ) {
     const { totalPages } = calculatePagination(rawLimit, totalRows, currentPage);
-    const pageControls = container.createEl("div", { cls: "sqlite-pagination" });
+    const pageControls = container.createDiv({ cls: "sqlite-pagination" });
 
-    const limitSelector = pageControls.createEl("div", { cls: "sqlite-pagination-limit" });
-    limitSelector.createEl("span", { text: "Rows: " });
+    const limitSelector = pageControls.createDiv({ cls: "sqlite-pagination-limit" });
+    limitSelector.createSpan({ text: "Rows: " });
     const select = limitSelector.createEl("select", { cls: "sqlite-pagination-select" });
     PAGINATION_NUMS.forEach((val) => {
         const opt = select.createEl("option", { value: String(val), text: val === 0 ? "All" : String(val) });
@@ -771,7 +771,7 @@ export function buildPaginationUI(
         onLimitChange(val);
     };
 
-    const nav = pageControls.createEl("div", { cls: "sqlite-pagination-nav" });
+    const nav = pageControls.createDiv({ cls: "sqlite-pagination-nav" });
     const prevBtn = nav.createEl("button", { cls: "sqlite-pagination-btn", text: "◀" });
     prevBtn.disabled = currentPage === 0;
     prevBtn.onclick = (e) => {
@@ -780,7 +780,7 @@ export function buildPaginationUI(
         if (currentPage > 0) onPageChange(currentPage - 1);
     };
 
-    const pageIndicator = nav.createEl("span", { cls: "sqlite-pagination-indicator" });
+    const pageIndicator = nav.createSpan({ cls: "sqlite-pagination-indicator" });
     pageIndicator.createSpan({ text: "Page" });
     const pageInput = pageIndicator.createEl("input", { cls: "sqlite-pagination-input", type: "number" });
     pageInput.value = String(currentPage + 1);
@@ -843,7 +843,7 @@ export function renderDataTable(
     let activePageChild: MarkdownRenderChild | null = null;
 
     container.empty();
-    const wrapper = container.createEl("div", { cls: "sqlite-table-wrapper" });
+    const wrapper = container.createDiv({ cls: "sqlite-table-wrapper" });
     const tableCls = getTableThemeClass(tableStyle);
 
     const table = wrapper.createEl("table", { cls: tableCls });
@@ -858,7 +858,7 @@ export function renderDataTable(
     const headerRow = thead.createEl("tr");
     columns.forEach((col: string) => {
         const th = headerRow.createEl("th");
-        const thContent = th.createEl("div", { cls: "sqlite-th-content" });
+        const thContent = th.createDiv({ cls: "sqlite-th-content" });
         const titleSpan = thContent.createSpan({ text: col });
 
         titleSpan.onclick = (e) => {
@@ -929,7 +929,7 @@ export function renderDataTable(
 
     const tbody = table.createEl("tbody");
     // Placeholder for pagination
-    const paginationContainer = container.createEl("div");
+    const paginationContainer = container.createDiv();
 
     const renderPage = async () => {
         if (activePageChild) {
@@ -962,29 +962,26 @@ export function renderDataTable(
         // Clear loading text
         tbody.empty();
 
-        const fragment = activeDocument.createDocumentFragment();
+        // Rows are built off-document and inserted in one go, so a full page costs one reflow
+        const fragment = createFragment();
 
         for (const row of pageValues) {
-            const tr = activeDocument.createElement("tr");
+            const tr = fragment.createEl("tr");
             tr.setCssStyles({ position: "relative" });
 
             row.forEach((val: SqlValue, index: number) => {
-                const td = activeDocument.createElement("td");
+                const td = tr.createEl("td");
                 const displayVal = val !== null ? String(val) : "NULL";
                 td.title = displayVal;
 
                 renderCell(val, td, activePageChild!, row, columns[index]);
-                tr.appendChild(td);
             });
 
             if (renderRowAction) {
                 renderRowAction(tr, row);
             }
-
-            fragment.appendChild(tr);
         }
 
-        // Вставляем все собранные строки разом
         tbody.appendChild(fragment);
 
         if (renderGhostRow) {
@@ -1025,7 +1022,7 @@ function showFilterPopup(
     const target = e.currentTarget as HTMLElement;
     const rect = target.getBoundingClientRect();
 
-    const popup = activeDocument.body.createEl("div", { cls: "sqlite-filter-popup" }) as PopupElement;
+    const popup = activeDocument.body.createDiv({ cls: "sqlite-filter-popup" }) as PopupElement;
     popup.setAttribute("data-col", colName);
     popup.setCssStyles({
         position: "absolute",
@@ -1062,13 +1059,13 @@ function showFilterPopup(
         window.addEventListener("scroll", scrollListener, true);
     }, 10);
 
-    const headerRow = popup.createEl("div", { cls: "sqlite-filter-header" });
+    const headerRow = popup.createDiv({ cls: "sqlite-filter-header" });
     headerRow.createSpan({ text: `Filter: ${colName}` });
 
     const helpIcon = headerRow.createSpan({ cls: "sqlite-filter-help" });
     applyIcon(helpIcon, "help-circle");
 
-    const helpText = popup.createEl("div", { cls: "sqlite-filter-help-text" });
+    const helpText = popup.createDiv({ cls: "sqlite-filter-help-text" });
     helpText.appendChild(
         sanitizeHTMLToDom(
             `<strong>Math:</strong> <code>>=10</code>, <code><=100</code>, <code>!=5</code>, <code>=0</code><br><strong>Text:</strong> Exact (<code>=apple</code>) or Partial (<code>apple</code>)`
@@ -1108,15 +1105,15 @@ function showFilterPopup(
         });
     });
 
-    const listContainer = popup.createEl("div", { cls: "sqlite-filter-list" });
+    const listContainer = popup.createDiv({ cls: "sqlite-filter-list" });
     const uniqueValues = getUniqueValues(colName);
     const selectedValues = new Set(currentFilter?.values || []);
 
-    const actions = listContainer.createEl("div", { cls: "sqlite-filter-list-actions" });
-    const selectAllBtn = actions.createEl("span", { text: "Select All" });
-    const clearAllBtn = actions.createEl("span", { text: "Clear All" });
+    const actions = listContainer.createDiv({ cls: "sqlite-filter-list-actions" });
+    const selectAllBtn = actions.createSpan({ text: "Select All" });
+    const clearAllBtn = actions.createSpan({ text: "Clear All" });
 
-    const checkboxContainer = listContainer.createEl("div", { cls: "sqlite-filter-checkboxes" });
+    const checkboxContainer = listContainer.createDiv({ cls: "sqlite-filter-checkboxes" });
 
     const renderCheckboxes = () => {
         checkboxContainer.empty();
@@ -1142,7 +1139,7 @@ function showFilterPopup(
         renderCheckboxes();
     };
 
-    const footer = popup.createEl("div", { cls: "sqlite-filter-footer" });
+    const footer = popup.createDiv({ cls: "sqlite-filter-footer" });
 
     const clearBtn = footer.createEl("button", { text: "Clear", cls: "sqlite-filter-btn-clear" });
     clearBtn.onclick = () => {
