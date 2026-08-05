@@ -1,6 +1,7 @@
 /* --- Default --- */
+/* Wins over .sqlite-db-buttons { display: flex } on specificity alone (0,2,0 vs 0,1,0) */
 .markdown-reading-view .sqlite-hide-in-reading {
-    display: none !important;
+    display: none;
 }
 
 /* --- TABLE LAYOUT LOCK (Safely scoped to our plugin only) --- */

@@ -131,15 +131,15 @@ export class SqliteView extends FileView {
                     const modified = this.db.getRowsModified();
                     const msg = `✅ Query executed successfully! Rows affected: ${modified}`;
                     new Notice(msg);
-                    resultContainer.createEl("div", { text: msg, cls: "sqlite-success" });
+                    resultContainer.createDiv({ text: msg, cls: "sqlite-success" });
                 } else {
                     results.forEach((res, index) => {
-                        const gridWrapper = resultContainer.createEl("div", { cls: "sqlite-table-wrapper" });
+                        const gridWrapper = resultContainer.createDiv({ cls: "sqlite-table-wrapper" });
                         gridWrapper.setCssStyles({ marginBottom: "20px" });
 
                         if (results.length > 1) {
                             gridWrapper
-                                .createEl("div", {
+                                .createDiv({
                                     text: `Result ${index + 1}:`,
                                     cls: "text-muted",
                                 })
@@ -182,7 +182,7 @@ export class SqliteView extends FileView {
         } catch (e) {
             if (resultContainer) {
                 resultContainer.empty();
-                resultContainer.createEl("div", { text: `SQL Error: ${String(e)}`, cls: "sqlite-error" });
+                resultContainer.createDiv({ text: `SQL Error: ${String(e)}`, cls: "sqlite-error" });
             } else {
                 new Notice(`Error: ${String(e)}`);
             }
@@ -231,9 +231,9 @@ export class SqliteView extends FileView {
         this.contentEl.empty();
         if (!this.db) return;
 
-        const sidebar = this.contentEl.createEl("div", { cls: "sqlite-sidebar" });
+        const sidebar = this.contentEl.createDiv({ cls: "sqlite-sidebar" });
 
-        const topBtns = sidebar.createEl("div", { cls: "sqlite-top-buttons" });
+        const topBtns = sidebar.createDiv({ cls: "sqlite-top-buttons" });
 
         const homeBtn = topBtns.createEl("button", { cls: "sqlite-sidebar-btn sqlite-btn-dashboard" });
         applyIcon(homeBtn.createSpan(), "layout-dashboard");
@@ -258,7 +258,7 @@ export class SqliteView extends FileView {
             this.refreshDatabase();
         };
 
-        sidebar.createEl("div", { cls: "sqlite-sidebar-section", text: "Tables" });
+        sidebar.createDiv({ cls: "sqlite-sidebar-section", text: "Tables" });
 
         const tableList = sidebar.createEl("ul", { cls: "sqlite-nav-list" });
         tableList.setCssStyles({
@@ -267,7 +267,7 @@ export class SqliteView extends FileView {
             margin: "0",
         });
 
-        const viewSection = sidebar.createEl("div", { cls: "sqlite-sidebar-section", text: "Views" });
+        const viewSection = sidebar.createDiv({ cls: "sqlite-sidebar-section", text: "Views" });
         const viewList = sidebar.createEl("ul", { cls: "sqlite-nav-list" });
         viewList.setCssStyles({
             listStyle: "none",
@@ -275,7 +275,7 @@ export class SqliteView extends FileView {
             margin: "0",
         });
 
-        this.mainArea = this.contentEl.createEl("div", { cls: "sqlite-main-area" });
+        this.mainArea = this.contentEl.createDiv({ cls: "sqlite-main-area" });
         this.mainArea.setCssStyles({
             flex: "1",
             display: "flex",
@@ -317,11 +317,11 @@ export class SqliteView extends FileView {
     }
 
     buildTerminal(container: HTMLElement, tableName: string | null) {
-        const termWrapper = container.createEl("div", { cls: "sqlite-terminal-wrapper" });
-        const header = termWrapper.createEl("div", { cls: "sqlite-terminal-header" });
-        const snippetBar = header.createEl("div", { cls: "sqlite-snippet-bar" });
-        const editorContainer = termWrapper.createEl("div", { cls: "sqlite-editor-container" });
-        const highlightDiv = editorContainer.createEl("div", { cls: "sqlite-highlight" });
+        const termWrapper = container.createDiv({ cls: "sqlite-terminal-wrapper" });
+        const header = termWrapper.createDiv({ cls: "sqlite-terminal-header" });
+        const snippetBar = header.createDiv({ cls: "sqlite-snippet-bar" });
+        const editorContainer = termWrapper.createDiv({ cls: "sqlite-editor-container" });
+        const highlightDiv = editorContainer.createDiv({ cls: "sqlite-highlight" });
         const textarea = editorContainer.createEl("textarea");
 
         const updateHighlight = () => {
@@ -371,8 +371,8 @@ export class SqliteView extends FileView {
         addSnippet("DELETE", `DELETE FROM "${safeTable}" WHERE id = 1;`);
         addSnippet("CREATE VIEW", `CREATE VIEW "new_view" AS\nSELECT * FROM "${safeTable}";`);
 
-        const controls = termWrapper.createEl("div", { cls: "sqlite-terminal-controls" });
-        const resultContainer = termWrapper.createEl("div", { cls: "sqlite-terminal-result" });
+        const controls = termWrapper.createDiv({ cls: "sqlite-terminal-controls" });
+        const resultContainer = termWrapper.createDiv({ cls: "sqlite-terminal-result" });
 
         let clearBtn: HTMLButtonElement;
 
@@ -427,12 +427,12 @@ export class SqliteView extends FileView {
             applyIcon(dashHeader.createSpan(), "database");
             dashHeader.createSpan({ text: ` Database: ${this.fileObj.name}` });
 
-            const statsGrid = this.mainArea.createEl("div", { cls: "sqlite-stats-grid" });
+            const statsGrid = this.mainArea.createDiv({ cls: "sqlite-stats-grid" });
 
             const addStatCard = (title: string, value: string) => {
-                const card = statsGrid.createEl("div", { cls: "sqlite-stat-card" });
-                card.createEl("div", { text: title, cls: "text-muted" }).setCssStyles({ marginBottom: "5px" });
-                card.createEl("div", { text: value, cls: "sqlite-stat-value" });
+                const card = statsGrid.createDiv({ cls: "sqlite-stat-card" });
+                card.createDiv({ text: title, cls: "text-muted" }).setCssStyles({ marginBottom: "5px" });
+                card.createDiv({ text: value, cls: "sqlite-stat-value" });
             };
 
             try {
@@ -462,8 +462,8 @@ export class SqliteView extends FileView {
         const schema = this.db.exec(`PRAGMA table_info(${quoteIdent(tableName)});`);
         const columnsInfo = schema.length > 0 ? schema[0].values : [];
 
-        const header = this.mainArea.createEl("div", { cls: "sqlite-dashboard-header" });
-        const titleArea = header.createEl("div", { cls: "sqlite-title-area" });
+        const header = this.mainArea.createDiv({ cls: "sqlite-dashboard-header" });
+        const titleArea = header.createDiv({ cls: "sqlite-title-area" });
 
         titleArea.createEl("h2", { text: tableName, cls: "mod-margin-bottom-none" });
 
@@ -510,17 +510,17 @@ export class SqliteView extends FileView {
             ).open();
         });
 
-        const stats = titleArea.createEl("div", { cls: "sqlite-table-stats" });
-        stats.createEl("span", { text: type.toUpperCase() });
-        this.rowCountEl = stats.createEl("span", { text: `${rowCount} rows` });
-        stats.createEl("span", { text: `${columnsInfo.length} cols` });
+        const stats = titleArea.createDiv({ cls: "sqlite-table-stats" });
+        stats.createSpan({ text: type.toUpperCase() });
+        this.rowCountEl = stats.createSpan({ text: `${rowCount} rows` });
+        stats.createSpan({ text: `${columnsInfo.length} cols` });
 
         this.buildTerminal(this.mainArea, tableName);
 
-        const schemaHeader = this.mainArea.createEl("div", { cls: "sqlite-schema-header" });
-        schemaHeader.createEl("span", { text: "Structure (Schema)", cls: "sqlite-schema-title" });
+        const schemaHeader = this.mainArea.createDiv({ cls: "sqlite-schema-header" });
+        schemaHeader.createSpan({ text: "Structure (Schema)", cls: "sqlite-schema-title" });
 
-        const schemaIcon = schemaHeader.createEl("span");
+        const schemaIcon = schemaHeader.createSpan();
         schemaIcon.setCssStyles({
             display: "flex",
             alignItems: "center",
@@ -529,7 +529,7 @@ export class SqliteView extends FileView {
         });
         applyIcon(schemaIcon, "chevron-down");
 
-        const schemaContent = this.mainArea.createEl("div");
+        const schemaContent = this.mainArea.createDiv();
         schemaContent.setCssStyles({ display: "none" });
 
         schemaHeader.onclick = () => {
@@ -582,8 +582,8 @@ export class SqliteView extends FileView {
             nullTd.textContent = col[3] ? "Yes" : "No";
         });
 
-        const dataHeader = this.mainArea.createEl("div", { cls: "sqlite-data-header" });
-        const colBar = dataHeader.createEl("div", { cls: "sqlite-col-bar" });
+        const dataHeader = this.mainArea.createDiv({ cls: "sqlite-data-header" });
+        const colBar = dataHeader.createDiv({ cls: "sqlite-col-bar" });
 
         if (this.visibleColumns.length === 0) {
             this.visibleColumns = columnsInfo.map((c: SqlValue[]) => String(c[1]));
@@ -593,7 +593,7 @@ export class SqliteView extends FileView {
             const colName = String(c[1]);
             const isVisible = this.visibleColumns.includes(colName);
 
-            const pill = colBar.createEl("span", {
+            const pill = colBar.createSpan({
                 text: colName,
                 cls: isVisible ? "sqlite-col-pill sqlite-col-pill-visible" : "sqlite-col-pill sqlite-col-pill-hidden",
             });
@@ -614,8 +614,8 @@ export class SqliteView extends FileView {
         });
 
         // Wrap actions in a dedicated layout container to prevent center drift
-        const actionsGroup = dataHeader.createEl("div", { cls: "sqlite-header-actions" });
-        const editModeBtn = actionsGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        const actionsGroup = dataHeader.createDiv({ cls: "sqlite-header-actions" });
+        const editModeBtn = actionsGroup.createSpan({ cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(editModeBtn, "pencil");
         editModeBtn.title = "Toggle Edit Mode (Live)";
 
@@ -648,7 +648,7 @@ export class SqliteView extends FileView {
             if (!this.isEditMode) editModeBtn.setCssStyles({ opacity: "0.5" });
         };
 
-        const copyMdBtn = actionsGroup.createEl("span", { cls: "sqlite-icon-btn sqlite-action" });
+        const copyMdBtn = actionsGroup.createSpan({ cls: "sqlite-icon-btn sqlite-action" });
         applyIcon(copyMdBtn, "clipboard-copy");
         copyMdBtn.title = "Copy view as Markdown Table";
         copyMdBtn.onclick = (e) => {
@@ -675,7 +675,7 @@ export class SqliteView extends FileView {
             }
         };
 
-        const dataContainer = this.mainArea.createEl("div");
+        const dataContainer = this.mainArea.createDiv();
 
         const renderData = () => {
             dataContainer.empty();

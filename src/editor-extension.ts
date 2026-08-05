@@ -1,5 +1,5 @@
 import { ViewPlugin, EditorView, ViewUpdate } from "@codemirror/view";
-import { TFile } from "obsidian";
+import { TFile, editorInfoField } from "obsidian";
 import { SQLITE_EXTENSIONS, DOM_ATTRIBUTES, DOM_CLASSES } from "./config";
 import { SqliteResultRenderer, buildDbWindowUI } from "./renderer";
 import type ObsidianSqlitePlugin from "./main";
@@ -7,34 +7,61 @@ import { extractTableNameFromQuery, getWrapperThemeClass } from "./formatters";
 import { preventEventPropagation } from "./utils";
 import { SqliteView, VIEW_TYPE_SQLITE } from "./SqliteView";
 
+/**
+ * How long to wait after a document edit before re-reading embed queries. While a
+ * query is being typed the text is briefly nonsense ("SELECT * FROM dem"), so
+ * running it on every keystroke would spam errors and re-render constantly.
+ */
+const EDIT_DEBOUNCE_MS = 600;
+
 export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
     ViewPlugin.fromClass(
         class {
             plugin: ObsidianSqlitePlugin;
             debounceTimer: number | null = null;
+            private framePending: boolean = false;
+            private destroyed: boolean = false;
 
             // Track active renderers to prevent massive memory leaks
             activeRenderers: Map<HTMLElement, SqliteResultRenderer> = new Map();
 
             constructor(public view: EditorView) {
                 this.plugin = plugin;
-                this.scheduleUpdate();
+                // Opening a note: nothing is being typed yet, so there is nothing to wait for
+                this.requestFrame();
             }
 
             update(update: ViewUpdate) {
-                if (update.docChanged || update.viewportChanged) {
+                if (update.docChanged) {
                     this.scheduleUpdate();
+                    return;
+                }
+
+                // Scrolling cannot have changed a query, so embeds coming into view render
+                // straight away — unless an edit is still settling and would be pre-empted
+                if (update.viewportChanged && this.debounceTimer === null) {
+                    this.requestFrame();
                 }
             }
 
             scheduleUpdate() {
                 if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
-                // Debounce to 600ms to prevent UI freezing while typing rapidly
                 this.debounceTimer = window.setTimeout(() => {
-                    window.requestAnimationFrame(() => {
-                        this.updateEmbeds();
-                    });
-                }, 600);
+                    this.debounceTimer = null;
+                    this.requestFrame();
+                }, EDIT_DEBOUNCE_MS);
+            }
+
+            /** Coalesces bursts of updates (a scroll fires many) into one pass per frame. */
+            private requestFrame() {
+                if (this.framePending) return;
+                this.framePending = true;
+
+                window.requestAnimationFrame(() => {
+                    this.framePending = false;
+                    if (this.destroyed) return;
+                    this.updateEmbeds();
+                });
             }
 
             /**
@@ -77,15 +104,18 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                     embed.setAttribute(DOM_ATTRIBUTES.PROCESSED, "true");
                     embed.setAttribute(DOM_ATTRIBUTES.QUERY, alt);
 
-                    const activeFile = this.plugin.app.workspace.getActiveFile();
-                    const file = this.plugin.app.metadataCache.getFirstLinkpathDest(src, activeFile?.path || "");
+                    // The note this editor is showing, which is not necessarily the focused
+                    // one: with a split view, getActiveFile() would resolve links belonging
+                    // to a background pane against the wrong note
+                    const sourcePath = this.view.state.field(editorInfoField, false)?.file?.path ?? "";
+                    const file = this.plugin.app.metadataCache.getFirstLinkpathDest(src, sourcePath);
                     if (!(file instanceof TFile)) return;
 
                     embed.empty();
                     embed.removeClass(DOM_CLASSES.FILE_EMBED, DOM_CLASSES.MARKDOWN_EMBED, DOM_CLASSES.IS_LOADED);
                     embed.classList.add(DOM_CLASSES.SQLITE_LIVE_EMBED);
 
-                    const windowWrapper = embed.createEl("div");
+                    const windowWrapper = embed.createDiv();
                     const wrapperCls = getWrapperThemeClass(this.plugin.settings.tableStyle);
                     if (wrapperCls) {
                         windowWrapper.classList.add(wrapperCls);
@@ -156,6 +186,7 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
 
             destroy() {
                 // When the user closes the note, completely destroy all tracked instances
+                this.destroyed = true;
                 if (this.debounceTimer) window.clearTimeout(this.debounceTimer);
                 this.activeRenderers.forEach((renderer) => renderer.unload());
                 this.activeRenderers.clear();

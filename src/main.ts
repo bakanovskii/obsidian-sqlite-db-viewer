@@ -34,8 +34,6 @@ import {
 } from "./formatters";
 import { getSql, preventEventPropagation, toArrayBuffer } from "./utils";
 
-declare const activeDocument: Document;
-
 const SELECTORS = {
     LIVE_PREVIEW: ".markdown-source-view.mod-cm6",
     EDIT_BLOCK_BTN: ".edit-block-button",
@@ -137,7 +135,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
                 const file = this.app.metadataCache.getFirstLinkpathDest(filePath, context.sourcePath);
                 if (!(file instanceof TFile)) return;
 
-                const windowWrapper = activeDocument.createElement("div");
+                const windowWrapper = createDiv();
                 const wrapperCls = getWrapperThemeClass(this.settings.tableStyle);
                 if (wrapperCls) windowWrapper.classList.add(wrapperCls);
 
@@ -246,12 +244,12 @@ export default class ObsidianSqlitePlugin extends Plugin {
 
         if (!dbPath || !(file instanceof TFile)) {
             el.empty();
-            el.createEl("span", { text: `Error: DB not found -> ${dbPath}`, cls: "sqlite-error" });
+            el.createSpan({ text: `Error: DB not found -> ${dbPath}`, cls: "sqlite-error" });
             return;
         }
 
         el.empty();
-        const windowWrapper = el.createEl("div");
+        const windowWrapper = el.createDiv();
 
         const wrapperCls = getWrapperThemeClass(this.settings.tableStyle);
         if (wrapperCls) windowWrapper.classList.add(wrapperCls);
@@ -302,7 +300,7 @@ export default class ObsidianSqlitePlugin extends Plugin {
             renderer = new SqliteResultRenderer(tableContainer, this, query, file, false);
             ctx.addChild(renderer);
         } catch (e) {
-            tableContainer.createEl("span", { text: `SQL Error: ${String(e)}`, cls: "sqlite-error" });
+            tableContainer.createSpan({ text: `SQL Error: ${String(e)}`, cls: "sqlite-error" });
         }
     }
 
