@@ -37,7 +37,21 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                 }, 600);
             }
 
+            /**
+             * CodeMirror recycles the DOM as the viewport moves, so embeds we rendered
+             * into can disappear. Their renderers would otherwise stay in the map
+             * forever, each holding a checked-out database connection.
+             */
+            pruneDetachedRenderers() {
+                this.activeRenderers.forEach((renderer, el) => {
+                    if (this.view.dom.contains(el)) return;
+                    renderer.unload();
+                    this.activeRenderers.delete(el);
+                });
+            }
+
             updateEmbeds() {
+                this.pruneDetachedRenderers();
                 const embeds = Array.from(this.view.dom.querySelectorAll(DOM_CLASSES.EMBED_SELECTOR));
 
                 embeds.forEach((el) => {
@@ -127,6 +141,10 @@ export const sqliteExtension = (plugin: ObsidianSqlitePlugin) =>
                     );
 
                     try {
+                        // Replace any renderer still registered for this element
+                        const previous = this.activeRenderers.get(embed);
+                        if (previous) previous.unload();
+
                         renderer = new SqliteResultRenderer(tableContainer, this.plugin, alt, file);
                         void renderer.load();
                         this.activeRenderers.set(embed, renderer);

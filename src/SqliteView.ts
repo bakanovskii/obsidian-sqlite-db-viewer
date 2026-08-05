@@ -3,19 +3,28 @@ import type { Database, SqlValue } from "sql.js";
 import { ConfirmModal, CreateTableModal, RenameTableModal } from "./modals";
 import { SqliteResultRenderer } from "./renderer";
 import type ObsidianSqlitePlugin from "./main";
-import { applyIcon, loadDb, createActionBtn } from "./utils";
+import type { DbChangeReason, DbHandle } from "./db-manager";
+import { applyIcon, createActionBtn } from "./utils";
 import {
     highlightSqlSyntax,
     generateCascadeQueries,
     getDatabaseStats,
     getSidebarObjects,
     getTableThemeClass,
+    analyzeSqlEffect,
+    quoteIdent,
+    quoteLiteral,
+    escapeRegex,
 } from "./formatters";
 
 export const VIEW_TYPE_SQLITE = "sqlite-view";
 
 export class SqliteView extends FileView {
-    db: Database | null = null;
+    /** Shared connection, also used by every embed pointing at the same file. */
+    private handle: DbHandle | null = null;
+    /** Guards against a fast file switch rendering a database that is no longer shown. */
+    private loadToken: number = 0;
+
     mainArea!: HTMLElement;
     fileObj!: TFile;
     activeTable: string = "";
@@ -23,6 +32,14 @@ export class SqliteView extends FileView {
     terminalQuery: string = "";
     isEditMode: boolean = false;
     visibleColumns: string[] = [];
+
+    private rowCountEl: HTMLElement | null = null;
+    /** The data grid currently mounted in the main area, kept so it can be unloaded. */
+    private currentRenderer: SqliteResultRenderer | null = null;
+
+    get db(): Database | null {
+        return this.handle ? this.handle.db : null;
+    }
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -41,21 +58,53 @@ export class SqliteView extends FileView {
         return "database";
     }
 
+    /** Unloads the mounted grid so it gives back its database reference. */
+    private disposeRenderer() {
+        if (!this.currentRenderer) return;
+        this.removeChild(this.currentRenderer);
+        this.currentRenderer.unload();
+        this.currentRenderer = null;
+    }
+
     cleanupDatabase() {
+        this.disposeRenderer();
         this.contentEl.empty();
-        if (this.db) {
-            this.db.close();
-            this.db = null;
+        this.rowCountEl = null;
+        if (this.handle) {
+            this.handle.release();
+            this.handle = null;
         }
     }
 
-    async saveDatabase() {
-        if (!this.db || !this.fileObj) return;
+    /** Persists the shared database. Returns false if the write was rejected or failed. */
+    async saveDatabase(): Promise<boolean> {
+        if (!this.handle) return false;
         try {
-            const buffer = this.db.export().buffer;
-            await this.app.vault.modifyBinary(this.fileObj, buffer as ArrayBuffer);
+            await this.handle.save();
+            return true;
         } catch (e) {
             new Notice(`Save error: ${String(e)}`);
+            return false;
+        }
+    }
+
+    /** Another view, embed or external tool changed the file we have open. */
+    private onDatabaseChanged(reason: DbChangeReason) {
+        if (reason === "external") {
+            this.renderLayout();
+            return;
+        }
+
+        // Our own embedded table wrote a row: only the counter needs refreshing
+        if (this.rowCountEl && this.activeTable) {
+            try {
+                const res = this.db?.exec(`SELECT COUNT(*) FROM ${quoteIdent(this.activeTable)};`);
+                if (res && res.length && res[0].values.length) {
+                    this.rowCountEl.textContent = `${Number(res[0].values[0][0])} rows`;
+                }
+            } catch {
+                // Table may have just been dropped; the next render will sort it out
+            }
         }
     }
 
@@ -71,7 +120,9 @@ export class SqliteView extends FileView {
         if (!query || !this.db) return;
         try {
             const results = this.db.exec(query);
-            void this.saveDatabase();
+
+            // Saving rewrites the whole file, so a read-only query must never trigger it
+            const effect = analyzeSqlEffect(query);
 
             if (resultContainer) {
                 resultContainer.empty();
@@ -125,8 +176,8 @@ export class SqliteView extends FileView {
                 }
             }
 
-            if (/CREATE|DROP|ALTER|INSERT|UPDATE|DELETE|WITH/i.test(query)) {
-                this.renderLayout();
+            if (effect.mutates) {
+                void this.saveDatabase().then(() => this.renderLayout());
             }
         } catch (e) {
             if (resultContainer) {
@@ -150,21 +201,30 @@ export class SqliteView extends FileView {
             this.isEditMode = false;
         }
 
-        window.setTimeout(async () => {
-            try {
-                this.db = await loadDb(this.app, this.plugin.manifest.id, file);
+        const token = ++this.loadToken;
 
-                this.contentEl.setCssStyles({
-                    display: "flex",
-                    height: "100%",
-                    padding: "0",
-                });
+        try {
+            const handle = await this.plugin.dbManager.acquire(file);
 
-                this.renderLayout();
-            } catch (e) {
-                new Notice(`Database load error: ${String(e)}`);
+            // A different file was opened while this one was still loading
+            if (token !== this.loadToken) {
+                handle.release();
+                return;
             }
-        }, 50);
+
+            this.handle = handle;
+            handle.onChange((reason) => this.onDatabaseChanged(reason));
+
+            this.contentEl.setCssStyles({
+                display: "flex",
+                height: "100%",
+                padding: "0",
+            });
+
+            this.renderLayout();
+        } catch (e) {
+            new Notice(`Database load error: ${String(e)}`);
+        }
     }
 
     renderLayout() {
@@ -246,7 +306,14 @@ export class SqliteView extends FileView {
             viewList.setCssStyles({ display: "none" });
         }
 
-        this.renderDashboard(this.activeTable || null);
+        // The active table may have been dropped or renamed elsewhere in the meantime
+        const active = objects.find((obj) => obj.name === this.activeTable);
+        if (this.activeTable && !active) {
+            this.activeTable = "";
+            this.visibleColumns = [];
+        }
+
+        this.renderDashboard(this.activeTable || null, active ? active.type : "table");
     }
 
     buildTerminal(container: HTMLElement, tableName: string | null) {
@@ -345,6 +412,8 @@ export class SqliteView extends FileView {
     }
 
     renderDashboard(tableName: string | null, type: string = "table") {
+        this.disposeRenderer();
+        this.rowCountEl = null;
         this.mainArea.empty();
         if (!this.db) return;
 
@@ -382,7 +451,7 @@ export class SqliteView extends FileView {
 
         let rowCount = 0;
         try {
-            const countRes = this.db.exec(`SELECT COUNT(*) FROM "${tableName}";`);
+            const countRes = this.db.exec(`SELECT COUNT(*) FROM ${quoteIdent(tableName)};`);
             if (countRes.length && countRes[0].values.length) {
                 rowCount = Number(countRes[0].values[0][0]);
             }
@@ -390,7 +459,7 @@ export class SqliteView extends FileView {
             new Notice(`Error: ${String(e)}`);
         }
 
-        const schema = this.db.exec(`PRAGMA table_info("${tableName}");`);
+        const schema = this.db.exec(`PRAGMA table_info(${quoteIdent(tableName)});`);
         const columnsInfo = schema.length > 0 ? schema[0].values : [];
 
         const header = this.mainArea.createEl("div", { cls: "sqlite-dashboard-header" });
@@ -407,13 +476,16 @@ export class SqliteView extends FileView {
                     this.executeGlobalQuery(queries);
                 } else {
                     const viewMeta = this.db!.exec(
-                        `SELECT sql FROM sqlite_master WHERE type='view' AND name='${tableName}'`
+                        `SELECT sql FROM sqlite_master WHERE type='view' AND name = ${quoteLiteral(tableName)}`
                     );
                     if (viewMeta.length && viewMeta[0].values.length) {
                         const sql = String(viewMeta[0].values[0][0]);
-                        const regex = new RegExp(`(CREATE\\s+VIEW\\s+)["'\`\\[]?${tableName}["'\`\\]]?(\\s+AS)`, "i");
-                        const newSql = sql.replace(regex, `$1"${newName}"$2`);
-                        this.executeGlobalQuery(`DROP VIEW "${tableName}";\n${newSql}`);
+                        const regex = new RegExp(
+                            `(CREATE\\s+VIEW\\s+)["'\`\\[]?${escapeRegex(tableName)}["'\`\\]]?(\\s+AS)`,
+                            "i"
+                        );
+                        const newSql = sql.replace(regex, `$1${quoteIdent(newName)}$2`);
+                        this.executeGlobalQuery(`DROP VIEW ${quoteIdent(tableName)};\n${newSql}`);
                     }
                 }
             }).open();
@@ -432,7 +504,7 @@ export class SqliteView extends FileView {
                         const queries = generateCascadeQueries("DROP", tableName, this.getViews());
                         this.executeGlobalQuery(queries);
                     } else {
-                        this.executeGlobalQuery(`DROP VIEW "${tableName}";`);
+                        this.executeGlobalQuery(`DROP VIEW ${quoteIdent(tableName)};`);
                     }
                 }
             ).open();
@@ -440,7 +512,7 @@ export class SqliteView extends FileView {
 
         const stats = titleArea.createEl("div", { cls: "sqlite-table-stats" });
         stats.createEl("span", { text: type.toUpperCase() });
-        stats.createEl("span", { text: `${rowCount} rows` });
+        this.rowCountEl = stats.createEl("span", { text: `${rowCount} rows` });
         stats.createEl("span", { text: `${columnsInfo.length} cols` });
 
         this.buildTerminal(this.mainArea, tableName);
@@ -581,8 +653,8 @@ export class SqliteView extends FileView {
         copyMdBtn.title = "Copy view as Markdown Table";
         copyMdBtn.onclick = (e) => {
             e.stopPropagation();
-            if (currentRenderer) {
-                void currentRenderer.copyToClipboard();
+            if (this.currentRenderer) {
+                void this.currentRenderer.copyToClipboard();
                 // Apply the full glow effect
                 copyMdBtn.setCssStyles({
                     opacity: "1",
@@ -604,33 +676,23 @@ export class SqliteView extends FileView {
         };
 
         const dataContainer = this.mainArea.createEl("div");
-        let currentRenderer: SqliteResultRenderer | null = null;
 
         const renderData = () => {
             dataContainer.empty();
-            if (currentRenderer) {
-                this.removeChild(currentRenderer);
-                currentRenderer.unload();
-            }
+            this.disposeRenderer();
 
             const selectedCols =
-                this.visibleColumns.length > 0 ? this.visibleColumns.map((c) => `"${c}"`).join(", ") : "*";
-            const queryStr = `SELECT ${selectedCols} FROM "${tableName}"`;
+                this.visibleColumns.length > 0 ? this.visibleColumns.map((c) => quoteIdent(c)).join(", ") : "*";
+            const queryStr = `SELECT ${selectedCols} FROM ${quoteIdent(tableName)}`;
 
-            currentRenderer = new SqliteResultRenderer(
-                dataContainer,
-                this.plugin,
-                queryStr,
-                this.fileObj,
-                false,
-                this.db,
-                async () => await this.saveDatabase()
-            );
+            // The renderer checks out the same shared connection this view uses
+            const renderer = new SqliteResultRenderer(dataContainer, this.plugin, queryStr, this.fileObj, false);
 
-            currentRenderer.tableName = tableName;
-            currentRenderer.isEditMode = this.isEditMode;
+            renderer.tableName = tableName;
+            renderer.isEditMode = this.isEditMode;
 
-            this.addChild(currentRenderer);
+            this.currentRenderer = renderer;
+            this.addChild(renderer);
         };
 
         editModeBtn.onclick = (e) => {
@@ -640,8 +702,8 @@ export class SqliteView extends FileView {
             updatePencilState();
 
             // To save pagination
-            if (currentRenderer) {
-                currentRenderer.setEditMode(this.isEditMode);
+            if (this.currentRenderer) {
+                this.currentRenderer.setEditMode(this.isEditMode);
             } else {
                 renderData();
             }
@@ -651,7 +713,7 @@ export class SqliteView extends FileView {
     }
 
     refreshDatabase() {
-        if (!this.fileObj) return;
+        if (!this.fileObj || !this.handle) return;
 
         const prevTable = this.activeTable;
         const prevCols = [...this.visibleColumns];
@@ -660,18 +722,15 @@ export class SqliteView extends FileView {
         // Don't clean DOM until new DB ready
         void (async () => {
             try {
-                // Load db in background and close only when ready
-                const newDb = await loadDb(this.app, this.plugin.manifest.id, this.fileObj);
-                if (this.db) {
-                    this.db.close();
-                }
-                this.db = newDb;
+                await this.handle!.reload();
+                if (!this.db) return;
 
                 // Restore state and etc
                 let tableExists = false;
                 if (prevTable) {
-                    const safeName = prevTable.replace(/"/g, '""');
-                    const check = this.db.exec(`SELECT name FROM sqlite_master WHERE name="${safeName}"`);
+                    const check = this.db.exec(
+                        `SELECT name FROM sqlite_master WHERE name = ${quoteLiteral(prevTable)}`
+                    );
                     tableExists = check.length > 0 && check[0].values.length > 0;
                 }
 

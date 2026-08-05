@@ -1,5 +1,5 @@
-import { App, TFile, setIcon } from "obsidian";
-import initSqlJs, { Database, SqlJsStatic } from "sql.js";
+import { setIcon } from "obsidian";
+import initSqlJs, { SqlJsStatic } from "sql.js";
 
 // esbuild will fill this to insert WASM SQL module
 declare const INJECTED_WASM_BASE64: string;
@@ -25,13 +25,14 @@ export async function getSql(): Promise<SqlJsStatic> {
 }
 
 /**
- * Safely loads an SQLite database from the Obsidian Vault.
- * Uses cached WASM to avoid repeated reading.
+ * Copies a typed array into a standalone ArrayBuffer.
+ *
+ * `Uint8Array.buffer` can be larger than the view itself (a view may start at a
+ * non-zero byteOffset), so writing it directly would store trailing garbage or a
+ * truncated database. Always slice by the view's own bounds before persisting.
  */
-export async function loadDb(app: App, pluginId: string, file: TFile): Promise<Database> {
-    const SQL = await getSql();
-    const arrayBuffer = await app.vault.readBinary(file);
-    return new SQL.Database(new Uint8Array(arrayBuffer));
+export function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 }
 
 /**
